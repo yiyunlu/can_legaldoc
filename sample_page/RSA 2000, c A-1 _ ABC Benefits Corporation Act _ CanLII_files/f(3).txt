@@ -1,0 +1,48 @@
+div.canliidocumentcontent * html #logo { padding-bottom:17px; }
+
+div.canliidocumentcontent * html #searchForm { margin-top:6px; }
+
+div.canliidocumentcontent * html #textResizer { margin-right:-25px; }
+
+div.canliidocumentcontent * html #mainNav { padding-bottom:4px; }
+
+div.canliidocumentcontent * html #bannerPremier { height:1%; }
+
+div.canliidocumentcontent * html .banner img { margin:-16px -10px 0 -7px; }
+
+div.canliidocumentcontent * html .columnLeftThird { width:50%; }
+
+div.canliidocumentcontent * html #servicesNav,
+div.canliidocumentcontent * html #page { height:1%; }
+
+div.canliidocumentcontent * html #servicesNav .columnLeft { margin-left:-10px; }
+
+div.canliidocumentcontent * html .sidebar ul,
+div.canliidocumentcontent .sidebar2 ul,
+div.canliidocumentcontent .sidebar3 ul { margin:-10px 0 0 20px; }
+
+div.canliidocumentcontent * html .subhead1 { margin-left:0; }
+
+div.canliidocumentcontent .columnRight,
+div.canliidocumentcontent #mainNav ul,
+div.canliidocumentcontent #leadStories,
+div.canliidocumentcontent #breadcrumb,
+div.canliidocumentcontent .photoGallery,
+div.canliidocumentcontent .photoGalleryBig,
+div.canliidocumentcontent .photoGallerySmall { display:inline-block; }
+
+div.canliidocumentcontent * html .columnRight,
+div.canliidocumentcontent * html #mainNav ul,
+div.canliidocumentcontent * html #leadStories,
+div.canliidocumentcontent * html #breadcrumb,
+div.canliidocumentcontent * html .photoGallery,
+div.canliidocumentcontent * html .photoGalleryBig,
+div.canliidocumentcontent * html .photoGallerySmall {
+  height:1%;
+  display:block;
+}
+
+div.canliidocumentcontent * html #pageWrap {
+  width:960px;
+  width:expression(((document.compatMode && document.compatMode=='CSS1Compat') ? document.documentElement.clientWidth : document.body.clientWidth) > 960 ? "960px" : (((document.compatMode && document.compatMode=='CSS1Compat') ? document.documentElement.clientWidth : document.body.clientWidth) < 960 ? "960px" : "100%"));
+}

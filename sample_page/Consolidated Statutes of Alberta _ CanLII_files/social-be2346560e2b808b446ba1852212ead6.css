@@ -1,0 +1,45 @@
+i.canlii-icon {
+	font-size: 20px;
+	cursor: pointer;
+	transition: all 250ms ease 0s;
+	-webkit-transition: all 250ms ease;
+	-ms-transition: all 250ms ease;
+}
+
+.canliiContent i.fa-moon {
+	font-size: 20px;
+}
+
+a i.canlii-icon {
+	text-decoration: none;
+}
+
+i.canlii-icon {
+	display: inline-block;
+}
+
+i.canlii-icon:hover {
+	transform: scale(1.4, 1.4);
+	-ms-transform: scale(1.4,1.4);
+}
+
+.canliiContent i.fa-linkedin-in,
+.canliiContent i.fa-facebook-f {
+	color: var(--black);
+}
+
+i.fa-rss.canlii-icon:hover {
+	color: #ee802f;
+}
+
+.canliiContent i.fa-linkedin-in:hover {
+	color: #0077B5;
+}
+
+.canliiContent i.fa-facebook-f:hover {
+	color: #3b5998;
+}
+
+.canliiContent i.download-file {
+	color: #484848;
+}

@@ -1,0 +1,345 @@
+/* Highlighter css */
+
+#hiBar {
+    background-color: transparent;
+    -ms-flex-wrap: nowrap;
+    flex-wrap: nowrap;
+    -ms-flex-direction: row;
+    flex-direction: row;
+    -ms-flex-pack: center;
+    justify-content: center;
+    -ms-flex-align: center;
+    align-items: center;
+}
+
+#hiBar.framed {
+	width: inherit;
+	float: right;
+}
+
+#hiBar-body {
+    width: 100%;
+
+    -ms-flex-wrap: nowrap;
+    flex-wrap: nowrap;
+    -ms-flex-pack: justify;
+    justify-content: space-between;
+}
+
+#hiBar.stick {
+    margin-top: 0 !important;
+    position: fixed;
+    width:100%;
+    top: 0;
+    z-index: 10000;
+}
+
+#hiBar-mobile-canlii-logo  {
+    padding-right: 10px;
+    align-items: center;
+}
+
+#hiBar-mobile-canlii-logo-img {
+    width: 67px;
+    margin-right: 10px;
+    margin-left: 4px;
+    padding-bottom: 4px;
+}
+
+#hiBar-page-widget {
+    -ms-flex-wrap: nowrap;
+    flex-wrap: nowrap;
+    align-items: center;
+}
+
+#hiBar-page-widget-label {
+    padding-left: 4px;
+    padding-right: 5px;
+}
+
+#hiBar-page-widget-page-number-input {
+    width: 60px;
+}
+
+#hiBar-highlight-widget-search {
+    -ms-flex-wrap: nowrap;
+    flex-wrap: nowrap;
+    -ms-flex-pack: end;
+    justify-content: flex-start;
+    width: 100%;
+}
+
+#hiBar-highlight-widget-search-terms-container {
+    width: 100%;
+    -ms-flex-wrap: nowrap;
+    flex-wrap: nowrap;
+    -ms-flex-pack: end;
+    justify-content: flex-end;
+}
+
+#hiBar-highlight-widget-search-terms {
+    overflow-y: auto;
+
+    -ms-flex-wrap: wrap;
+    flex-wrap: wrap;
+    -ms-flex-pack: end;
+    justify-content: flex-end;
+
+    -ms-user-select: none;
+    user-select: none;
+    -o-user-select: none;
+    -webkit-user-select: none;
+}
+
+#hiBar-highlight-widget-search-terms-edit {
+    -ms-flex-wrap: nowrap;
+    flex-wrap: nowrap;
+    -ms-flex-pack: end;
+    justify-content: flex-end;
+    align-items: center;
+    width: 100%;
+    padding-bottom: 2px;
+}
+
+#hiBar-highlight-widget-search-terms-edit-input {
+    width: 300px;
+}
+
+#hiBar-highlight-widget-search-terms-edit div.input-group {
+    flex-wrap: nowrap;
+}
+
+#hiBar-highlight-widget-search-terms-edit-input::placeholder,
+#hiBar-highlight-widget-search-terms-edit-input::-webkit-input-placeholder {
+    /*font-size: 14px !important;*/
+}
+
+.bottom-bar #hiBar {
+    width: 100%;
+}
+
+#hiBar-highlight-widget-search-controls {
+    -ms-flex-wrap: nowrap;
+    flex-wrap: nowrap;
+    -ms-flex-pack: end;
+    justify-content: flex-end;
+    align-items: center;
+    padding-bottom: 2px;
+}
+
+#hiBar-highlight-widget-search-controls i,
+#hiBar-highlight-widget-search-terms-edit i {
+	transition: all 0.3s ease;
+    font-size: 16px;
+    padding: 4px;
+	
+	-ms-user-select: none;
+    user-select: none;
+    -o-user-select: none;
+    -webkit-user-select: none;
+}
+
+#hiBar-highlight-widget-counts {
+    -ms-flex-wrap: nowrap;
+    flex-wrap: nowrap;
+    align-items: center;
+    padding: 0 10px 2px 10px;
+}
+
+#highlight-count {
+    text-align: right;
+}
+
+
+#highlight-total-count {
+    text-align: left;
+}
+
+#hiBar-highlight-widget-search-terms-edit-ok,
+#mobile-highlight-button {
+    background: var(--white);
+    border: var(--bs-border-width) solid var(--bs-border-color);
+    border-right: none;
+    padding-right: 4px;
+}
+
+#hiBar button:not(#hiBar-highlight-widget-search-terms-edit-ok) {
+    width: 32px;
+    height: 32px;
+
+	border-radius: 4px;
+    border: none;
+    margin: 0 2px;
+    color: var(--slate-600);
+    background: var(--gray-200);
+
+    transition: all 0.3s ease;
+}
+
+#hiBar button:not(#hiBar-highlight-widget-search-terms-edit-ok).disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+#hiBar button:not(#hiBar-highlight-widget-search-terms-edit-ok):hover:not(.disabled) {
+    background: var(--gray-300);
+}
+
+#hiBar button i.fa-caret-up:before {
+    vertical-align: sub;
+}
+
+#hiBar button i.fa-caret-down:before,
+#hiBar button i.fa-pen-to-square:before {
+    vertical-align: middle;
+}
+
+#hiBar .diff-widget-btn {
+    -ms-flex-pack: center;
+    justify-content: center;
+    -ms-flex-align: center;
+    align-items: center;
+    font-size: 12pt;
+    cursor: pointer;
+	transition: all 0.3s ease;
+	
+    -ms-user-select: none;
+    user-select: none;
+    -o-user-select: none;
+    -webkit-user-select: none;
+}
+
+.highlighted-term {
+    border-radius: 2px;
+    padding-left: 7px;
+    padding-right: 7px;
+    padding-top: 1px;
+    cursor: pointer;
+
+    /*white-space: nowrap;*/
+    display: inline-block;
+    border: 1px solid #BBBBBB;
+}
+
+#hiBar-highlight-widget-search-terms label {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    padding: 5px;
+
+    transition: all 0.3s ease;
+}
+
+#hiBar-highlight-widget-search-terms label input {
+    padding: 0;
+    margin: 0 2px 2px 0;
+}
+
+.term-text {
+    color: #585858;
+}
+
+.lexumSolrTransition {
+    transition: all 0.2s ease 0s;
+}
+
+.solexLeft {
+    border-top-left-radius: 3px;
+    border-bottom-left-radius: 3px;
+    padding-left: 2px;
+}
+
+.solexRight {
+    border-top-right-radius: 3px;
+    border-bottom-right-radius: 3px;
+    padding-right: 2px;
+}
+
+.lexumSolrCurrentTerm {
+    color: #FFFFFF;
+}
+
+.lexumSolrCurrentTerm.solexNohl {
+    background-color: inherit !important;
+    color: inherit !important;
+}
+
+.solexNohl {
+    background-color: inherit;
+}
+
+.solexMissingTerm {
+    cursor: default !important;
+    opacity: 0.8;
+    background: repeating-linear-gradient( -55deg, #fcc6c5, #fcc6c5 5px, #FFF 5px, #FFF 10px );
+}
+
+.solexMissingTerm i.solexMissingTermIcon {
+    cursor: help;
+    vertical-align: top;
+}
+
+@media only screen and (max-width: 450px) {
+    #hiBar {
+        -ms-flex-wrap: wrap;
+        flex-wrap: wrap;
+    }
+
+    #hiBar-body {
+        padding-left: 0;
+        padding-right: 0;
+        -ms-flex-wrap: wrap;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+    }
+
+    #hiBar-highlight-widget-search {
+        -ms-flex-wrap: wrap;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        margin-left: 4px;
+    }
+
+    #hiBar-highlight-widget-search-terms-container {
+        -ms-flex-wrap: wrap;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+    }
+
+    #hiBar-highlight-widget-search-terms {
+        -ms-flex-wrap: wrap;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+
+        max-height: 200px;
+    }
+
+    #hiBar-body #hiBar-page-widget-label {
+        display: inline-block;
+    }
+
+    #hiBar-page-widget-label {
+        display: none;
+    }
+}
+
+/* all small screens, up to ipad pro */
+@media screen and (max-width: 1600px) {
+    #hiBar-highlight-widget-search-terms-edit-input {
+        width: 200px;
+    }
+}
+
+@media print {
+    .lexumSolrHi {
+        visibility: hidden;
+    }
+
+    #hiBar {
+        display: none;
+    }
+
+    #wrap {
+        padding-top: 0 !important;
+    }
+}

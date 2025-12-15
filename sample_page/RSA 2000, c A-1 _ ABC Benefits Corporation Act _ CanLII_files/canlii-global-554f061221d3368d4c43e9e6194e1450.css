@@ -1,0 +1,1647 @@
+/**********************************************/
+/**************** UTILS/GLOBAL ****************/
+/**********************************************/
+
+@font-face {
+	font-family: "Open Sans";
+	src: url("/fonts/Open_Sans/OpenSans-VariableFont_wdth,wght.ttf") format("truetype");
+	font-display: swap;
+	font-weight: 100 900;
+}
+
+@font-face {
+	font-family: "Open Sans";
+	src: url("/fonts/Open_Sans/OpenSans-Italic.ttf") format("truetype");
+	font-style: italic;
+}
+
+@font-face {
+	font-family: "Open Sans";
+	src: url("/fonts/Open_Sans/OpenSans-Bold.ttf") format("truetype");
+	font-weight: bold;
+}
+
+@font-face {
+	font-family: "Open Sans";
+	src: url("/fonts/Open_Sans/OpenSans-BoldItalic.ttf") format("truetype");
+	font-style: italic;
+	font-weight: bold;
+}
+
+:root {
+
+	--1: 4px;
+	--2: 8px;
+	--3: 12px;
+	--4: 16px;
+	--5: 20px;
+	--6: 24px;
+	--10: 40px;
+
+	--slate-100: #F1F5F9;
+	--slate-200: #D4D9E1;
+	--slate-400: #909db0;
+	--slate-500: #64748B;
+	--slate-600: #475569;
+
+	--header-default-size: 70px;
+	--framed-bar-default-size: 40px;
+
+	--white: #FFF;
+	--black: #000;
+
+	--gray-50: #F9FAFB;
+	--gray-100: #F3F4F6;
+	--gray-200: #E5E7EB;
+	--gray-300: #D1D5DB;
+	--gray-400: #CBD5E1;
+
+	--main-link-color: #0578B8;
+	--main-link-hover-color: #01496F;
+	--main-label-color: #7b7575;
+
+	--gar-chat-width: 42px; /* Le panneau de l'assistant de recherche est collapsed par défaut */
+
+	--gray-bg-link-color: #0273B1;
+	--new-feature-bg: #DF3030;
+	--survey-bg-color: #0578B8;
+	--survey-bg-hover-color: #01496F;
+
+	--bs-font-sans-serif: 'Open Sans', "Myriad Web", Verdana, sans-serif;
+	--bs-body-font-size: 14px;
+	--bs-link-color: #0578B8;
+	--bs-link-color-rgb: 5, 120, 184;
+
+}
+
+a.reflex-parallel-citations {
+	background-image: url(/images/reflex_small.gif);
+	background-position: center left;
+	background-repeat: no-repeat;
+	padding-left: 20px;
+}
+
+a.reflex-parallel-citations img {
+	display: none;
+}
+
+a.reflex-parallel-citations:link img {
+    margin-right: 5px;
+}
+
+span.newFeature {
+	vertical-align: super;
+    font-size: smaller;
+    font-weight: bold;
+    color: #E00000;
+    padding-left: 3px;
+}
+
+.gap-s {
+	gap: 8px;
+}
+
+.gap-m {
+	gap: 12px;
+}
+
+.gap-xl {
+	gap: 32px;
+}
+
+.smaller-font {
+	font-size: 12px;
+}
+
+.no-flex-basis {
+	flex-basis: 0;
+}
+
+button.tipAccept {
+	font-weight: bold; 
+	color: white; 
+	background-color: #1d55ad; 
+	padding: 8px 16px; 
+	border: none; 
+	border-radius: 4px; 
+	cursor: pointer;
+	
+	transition: background-color 0.3s ease;
+	-webkit-transition: background-color 0.3s ease;
+	-ms-transition: background-color 0.3s ease;
+}
+
+button.tipAccept:hover {
+	background-color: #0c3c87;
+}
+
+.bootstrap dfn {
+	border-bottom: 1px dashed #007bbe;
+	cursor: help;
+	font-style: normal;
+}
+
+.canliiContent img {
+	padding: 0;
+	margin: 0;
+	border: none;
+}
+
+.canliiContent span.italic {
+	font-style: italic;
+}
+
+.canliiContent li .selected, td .selected {
+	color: #000;
+	font-weight: bold;
+}
+
+.canliiContent div.lineSeparator {
+	border-bottom: 1px solid #000;
+	margin: 1em 0 1.5em 0;
+	padding: 0;
+	width: 980px;
+}
+
+.canliiContent .highlightVisited a:visited {
+	color: #a0522d;
+}
+
+.canliiContent .highlightVisited a.canliiConnectsLink:visited { 
+	color: var(--main-link-color);
+}
+
+span.link {
+	color: var(--main-link-color);
+	cursor: pointer;
+}
+
+.pointer {
+	cursor: pointer;
+}
+
+.documentContent a.reflex-statute,
+.documentContent a.reflex-caselaw {
+	white-space: nowrap;
+}
+
+.canliiContent a.rssIconLink {
+	text-decoration: none;
+}
+
+div#searchResults div.searchResult div.keywords span.keyword,
+div.citedBy div.keywords span.keyword {
+	display: inline-block;
+	color: var(--main-label-color);
+	font-style: italic;
+}
+
+div#searchResults div.searchResult div.subjects,
+div.citedBy div.subjects {
+	padding-top: 4px;
+	padding-bottom: 4px;
+}
+
+div.subjects span.badge {
+	font-size: 85%;
+	font-weight: 400;
+	color: var(--main-label-color);
+	border: 1px solid var(--main-label-color);
+}
+
+.snippet,
+div.citedBy div.snippet {
+	max-width: 1200px;
+	padding: 0.2em;
+	margin-bottom: 0.5em;
+	margin-top: 0.4em;
+}
+
+i.fa-rss-square {
+	font-size: 16px; 
+	color: #ee802f;
+}
+
+i.fa-exclamation-circle {
+	color: var(--main-link-color);
+	font-size: 16px;
+}
+
+textarea.tippedTaContent  {
+	display: none; 
+	resize: none; 
+	margin-left: 10px;
+}
+
+td.tippedCell {
+	padding-right: 1em;
+	vertical-align: top;
+}
+
+td.tippedTop {
+	vertical-align: top;
+}
+
+i.fa-pepper-hot {
+	color: var(--main-link-color);
+}
+
+i.fa-skull {
+	color: #dc0005	;
+}
+
+i.fa-exclamation-triangle,
+i.fa-pepper-hot.warning {
+	color: #FFCC00	;
+}
+
+i.fa-exclamation-triangle.danger,
+i.fa-pepper-hot.danger {
+	color: #dc0005	;
+}
+
+i.fa-pepper-hot.basic {
+	color: #bbb;
+}
+
+.noteupType i.fa-pepper-hot,
+.treatment-list i.fa-pepper-hot {
+	font-size: 90%;
+}
+
+.unselectable {
+	-webkit-touch-callout: none;
+	-moz-user-select: -moz-none;
+	-khtml-user-select: none;
+	-webkit-user-select: none;
+	-ms-user-select: none;
+	user-select: none;
+}
+
+.canliiContent .collectionScopeLink {
+	margin-left: 5px;
+	font-size: 20px;
+}
+
+.canliiContent .collectionScopeLink a {
+	text-decoration: none;
+}
+
+#commentForm .feedbackEmail {
+	opacity: 0;
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 0;
+    width: 0;
+    z-index: -1;
+}
+
+.bootstrap .form-check-input:checked {
+	border-color: var(--main-link-color);
+	background-color: var(--main-link-color);
+}
+
+/* this is to overwrite the default focus in firefox, since it is barely visible */
+:focus-visible {
+	outline-style: auto;
+}
+
+/* SPACE RESERVATION FOR LEXBOX BAR */
+div#documentHeader div#documentMeta div#lexboxHook,
+div#documentContainer div.tab-content div#lexboxHook {
+	height: 50px;
+}
+
+div#documentHeaderDisplay div#lexboxHook {
+	height: 50px;
+}
+
+div#lexbox-login-hook #lb-status-dropdown a:nth-child(n+2),
+div#lexbox-login-hook button {
+	padding-left: 1em;
+	padding-right: 1em;
+}
+
+#canlii-header #canlii-login #lexbox-login-hook:has(> .lb-status-dropdown-wrapper) .signup,
+#canlii-header #canlii-login #lexbox-login-hook:has(> .lb-status-dropdown-wrapper) .login {
+	display: none;
+}
+
+img.shadowed {
+	box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19);
+	padding: 6px;
+}
+
+/* SURVEY */
+button#surveyModalTrigger {
+	background-color: var(--survey-bg-color);
+	color: white;
+    bottom: 0;
+	right: calc(var(--gar-chat-width) + 2.5rem);
+    position: fixed;
+    z-index: 2000;
+    border-radius: 4px 4px 0 0;
+    padding: 4px 10px;
+}
+
+button#surveyModalTrigger:hover {
+	background-color: var(--survey-bg-hover-color);
+}
+
+div#surveyModal div.modal-body,
+div#surveyModal div.modal-footer {
+	background-color: #fff;
+}
+
+div#surveyModal div.modal-header {
+	background-color: #F0F0F0;
+}
+
+button.styleless {
+	background-color: transparent;
+	border: none;
+	padding: 0;
+}
+
+div#surveyModal div.modal-body i.fa-star {
+	color: #d7eb00;
+	font-size: 20px;
+	cursor: pointer;
+}
+
+div#surveyModal div.modal-body i.fa-star:hover {
+	color: #ebb000;
+}
+
+div#surveyModal .modal-dialog {
+	position: fixed !important;
+	right: 0;
+	bottom: 0;
+	margin-bottom: 50px !important;
+	margin-right: 20px;
+	z-index: 2000;
+}
+
+.modal-open {
+	/* keeps the main scrollbar, so the fixed elements do not move */
+	overflow-y: auto !important;
+
+	/* prevents main content from moving */
+	padding-right: 0 !important;
+}
+
+div#surveyModal span#ratingWarning {
+	display: none;
+}
+
+button#surveySubmit {
+	color: white;
+	background-color: var(--main-link-color);
+}
+
+button#surveySubmit:hover {
+	color: white;
+	background-color: var(--main-link-hover-color);
+}
+
+div#survey-toast-container {
+    bottom: 30px;
+}
+
+div#survey-toast {
+    color: var(--bs-success-text-emphasis);
+    background: var(--bs-success-bg-subtle);
+    border-color: var(--bs-success-border-subtle);
+}
+
+div#surveyAlert {
+	display: none;
+	background-color: var(--gray-100);
+    border-color: var(--gray-200);
+}
+
+button#backToTop {
+	display: none;
+	position: fixed;
+	bottom: 2.5rem;
+	right: calc(var(--gar-chat-width) + 2.5rem);
+	z-index: 99;
+	opacity: 0.7;
+}
+
+p.noResultsMessage {
+	display: none;
+	margin-bottom: 0;
+	padding-left: 0.25rem;
+	padding-top: 0.25rem;
+}
+
+/* COOKIE CONSENT */
+div#cookieConsentBlocker {
+	display: none;
+	background: rgba(0, 0, 0, 0.5);
+	width: 100%;
+    height: 100%;
+    overflow: hidden;
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 4000;
+}
+
+div#cookieConsentBanner {
+	display: none;
+	background-color: rgba(0, 0, 0, 0.8);
+	color: white;
+	position: fixed;
+	bottom: 0;
+	z-index: 4001;
+	padding-left: 25%;
+	padding-right: 25%;
+}
+
+div#cookieConsentBanner a {
+	color: white;
+	text-decoration: underline;
+	font-weight: bold;
+}
+
+div#cookieConsentBanner a:hover {
+	color: #ddd;
+}
+
+div#cookieConsentModal {
+	z-index: 4001;
+}
+
+div#cookieConsentModal button.descriptionToggler {
+	border: none;
+	background: transparent;
+}
+
+div#cookieConsentModal .modal-header {
+	border-bottom: none;
+	padding-bottom: 0;
+}
+
+div#cookieConsentContainer button.btn-sm {
+	background-color: var(--main-link-color);
+	color: white;
+	border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+div#cookieConsentContainer button.btn-sm:hover {
+	background-color: var(--main-link-hover-color);
+}
+
+div#cookieConsentContainer .cookieType {
+	cursor: pointer;
+}
+
+div#cookieConsentContainer .success {
+	text-decoration: none;
+	color: var(--bs-success-text-emphasis);
+}
+
+div#cookieConsentContainer .fail {
+	text-decoration: none;
+	color: var(--bs-danger-text-emphasis);
+}
+
+/**********************************************/
+/**** ORIGINAL DOCUMENT (content from word) ***/
+/**********************************************/
+
+#originalDocument a:link,
+#originalDocument a.canlii:link,
+#originalDocument a.falseLink,
+#originalDocument a.reflex2-link,
+#originalDocument span.reflex2-link:not([link-count="1"]),
+#originalDocument a.reflex3-caselaw,
+div.tpd-content a:link,
+div.tpd-content a.canlii:link,
+div.tpd-content a.falseLink,
+div.tpd-content a.reflex2-link,
+div.tpd-content span.reflex2-link:not([link-count="1"]),
+div.tpd-content a.reflex3-caselaw,
+div.t_ContentContainer a,
+div.qweri-content-wrapper span.reflex2-link:not([link-count="1"]),
+div#warnings a {
+	color: var(--main-link-color);
+	text-decoration: none;
+}
+
+#originalDocument a:link:hover,
+#originalDocument a.canlii:link:hover,
+#originalDocument a.falseLink:hover,
+#originalDocument a.reflex2-link:hover,
+#originalDocument span.reflex2-link:not([link-count="1"]):hover,
+#originalDocument a.reflex3-caselaw:hover,
+div.tpd-content a:link:hover,
+div.tpd-content a.canlii:link:hover,
+div.tpd-content a.falseLink:hover,
+div.tpd-content a.reflex2-link:hover,
+div.tpd-content span.reflex2-link:not([link-count="1"]):hover,
+div.tpd-content a.reflex3-caselaw:hover,
+div.t_ContentContainer a:hover,
+div.qweri-content-wrapper span.reflex2-link:not([link-count="1"]):hover,
+div#warnings a:hover {
+	color: var(--main-link-hover-color);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+/**********************************************/
+/******************* LAYOUT *******************/
+/**********************************************/
+
+*, *:before, *:after {
+	box-sizing: border-box;
+}
+
+html, body {
+	height: 100%;
+}
+
+body {
+	display: flex;
+    flex-direction: column;
+	padding: 0;
+	margin: 0;
+}
+
+.search-pane {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+    overflow-y: auto;
+}
+
+.canliiContent {
+ 	max-width: 1200px;
+	padding-left: 4px;
+	padding-right: 4px;
+    margin-left: auto;
+    margin-right: auto;
+	
+	transition: max-width 0.5s ease;
+	-webkit-transition: max-width 0.5s ease;
+	-ms-transition: max-width 0.5s ease;
+}
+
+.canliiContent.framed {
+	max-width: 100%;
+}
+
+.mainContentWrapper {
+	flex: 0 0 100%;
+}
+
+hr {
+	width: 100%;
+}
+
+h1, h2 {
+	margin-top: 20px !important;
+}
+
+.bootstrap h1, .bootstrap .h1 {
+	font-size: 24px;
+}
+
+.bootstrap h2, .bootstrap .h2 {
+	font-size: 24px;
+}
+
+.bootstrap h5, .bootstrap .h5 {
+	font-size: 14px;
+}
+
+.bootstrap .nav-link {
+	color: var(--main-link-color);
+}
+
+.bootstrap .nav-tabs .nav-link:hover {
+	text-decoration: none;
+}
+
+.bootstrap .nav-tabs .nav-link.active,
+.bootstrap .nav-tabs .nav-item.show .nav-link {
+	font-weight: bold;
+	color: #484848;
+	background-color: #fff;
+	border-color: #dee2e6 #dee2e6 #fff
+}
+
+.bootstrap .table .thead-light th {
+	color: #495057;
+	background-color: #e9ecef;
+	border-color: #dee2e6;
+}
+
+/**********************************************/
+/******** SIDE PANNEL AND MAIN CONTENT ********/
+/**********************************************/
+
+div#mainContent, div#mainContentWrapper {
+	margin-top: 10px;
+}
+
+div#wrapQweri div#mainContent {
+	margin-top: 0;
+}
+
+area {
+	outline: none;
+}
+
+/**********************************************/
+/******************* HEADER *******************/
+/**********************************************/
+
+#canlii-header {
+	display: flex;
+	padding: var(--4, 16px) var(--6, 24px);
+	flex-direction: column;
+	gap: var(--4, 16px);
+
+	border-bottom: 1px solid var(--gray-200);
+	background: var(--gray-100);
+
+	position: sticky;
+	top: 0;
+	z-index: 20;
+}
+
+.zoom-200 #canlii-header {
+	zoom: 0.8;
+}
+
+.zoom-222 #canlii-header,
+.zoom-240 #canlii-header,
+.zoom-250 #canlii-header,
+.zoom-261 #canlii-header {
+	zoom: 0.6;
+}
+
+.zoom-300 #canlii-header,
+.zoom-333 #canlii-header,
+.zoom-350 #canlii-header,
+.zoom-600 #canlii-header {
+	zoom: 0.45;
+}
+
+.zoom-400 #canlii-header,
+.zoom-750 #canlii-header,
+.zoom-800 #canlii-header {
+	zoom: 0.35;
+}
+
+.zoom-500 #canlii-header,
+.zoom-1000 #canlii-header {
+	zoom: 0.3;
+}
+
+#canlii-header a:not(#lb-status-dropdown-wrapper *)  {
+	color: var(--gray-bg-link-color);
+}
+
+#canlii-header #canlii-breadcrumbs {
+	flex: 1 0 0;
+	gap: 12px;
+}
+
+#canlii-header #canlii-breadcrumbs span {
+	font-weight: 600;
+}
+
+#canlii-header #canlii-breadcrumbs a {
+	font-weight: 400;
+}
+
+#canlii-header #canlii-breadcrumbs svg {
+	stroke-width: 1px;
+	stroke: var(--gray-400);
+}
+
+#canlii-header #canlii-breadcrumbs svg path {
+	stroke: var(--gray-400);
+}
+
+#canlii-header #highlight-mobile-button {
+	display: none;
+}
+
+#canlii-header #canlii-login :not(#lb-status-dropdown-wrapper *) {
+	font-weight: 700;
+}
+
+#canlii-header #canlii-login .disabled{
+	opacity: .5;
+}
+
+#canlii-header #canlii-login .login-icon,
+#canlii-header #highlight-mobile-button button,
+#canlii-header #canlii-lang-toggler button {
+	background: var(--gray-50);
+	border-radius: 8px;
+	border: 2px solid var(--gray-300);
+	color: var(--main-link-color);
+
+	transition: all 0.3s ease;
+}
+
+#canlii-header #canlii-lang-toggler button {
+	color: var(--black);
+}
+
+#canlii-header #canlii-lang-toggler button:after {
+	color: var(--main-link-color);
+}
+
+#canlii-header #canlii-login .login-icon {
+	display: none;
+}
+
+#canlii-header #canlii-lang-toggler:hover {
+	background: var(--gray-100);
+}
+
+#canlii-header #canlii-lang-toggler button {
+	font-size: 14px !important;
+}
+
+#canlii-header #canlii-lang-toggler .dropdown-menu {
+	width: 270px;
+}
+
+#canlii-header #canlii-lang-toggler .dropdown-menu a {
+	color: var(--bs-body-color);
+	font-weight: normal;
+	text-decoration: none;
+}
+
+#canlii-header #canlii-lang-toggler .dropdown-menu .dropdown-header {
+	padding: 0 0 6px 0;
+}
+
+#canlii-header #canlii-lang-toggler .dropdown-menu .dropdown-footer {
+	padding-top: 6px;
+}
+
+#canlii-header .bottom-bar {
+	display: none;
+}
+
+span.procesVerbal {
+	color: #808080;
+}
+
+/**********************************************/
+/******************* FOOTER *******************/
+/**********************************************/
+
+div#wrap {
+	flex: 1 0 auto; /* 2 */
+    padding: var(--space) var(--space) 0;
+}
+
+footer.bootstrap {
+	background-color: #fbfbfb;
+	clear: both;
+	border-top: 1px solid #cfcfcf;
+	margin-top: 30px !important; 
+	z-index: 2;
+    width: 100%;
+}
+
+.framed footer.bootstrap {
+	display: none;
+}
+
+footer.bootstrap a {
+	color: var(--gray-bg-link-color);
+}
+
+div#wrapQweri ~ footer {
+	margin-top: 0 !important;
+}
+
+#footerContent.canliiContent {
+	margin-top: 1em;
+	max-width: 1200px;
+}
+
+div#darkOption {
+    display: inline-block;
+	padding-left: 0;
+}
+
+div#darkOption .form-check-input {
+	margin-left: 0;
+	float: right;
+}
+
+div#darkOption label#darkModeLabel i::before {
+	padding-right: 4px;
+}
+
+footer.bootstrap .form-check-input:checked~.form-check-label::before {
+  border-color: #6c757d;
+  background-color: #6c757d;
+}
+
+
+/**********************************************/
+/********************* TAB ********************/
+/**********************************************/
+
+.canliiContent div#arbitratorTabs {
+	padding-top: 8px;
+}
+
+div.subTab {
+	background-image: linear-gradient(#f5f5f5,white); 
+	min-height: 34px;
+}
+
+.canliiContent div#arbitratorTabs .nav-tabs a.active,
+.canliiContent div#dbScopeTabs .nav-tabs a.active {
+	background-color: #f5f5f5;
+	border-bottom-color: #f5f5f5;
+}
+
+/* Super hack so the document content is not affected by bootstrap styles */
+.tab-content>.tab-pane {
+	display: none; 
+}
+
+.tab-content>.active {
+	display: block;
+}
+
+.fade {
+	transition: opacity .15s linear
+}
+
+@media screen and (prefers-reduced-motion:reduce) {
+	.fade {
+		transition: none
+	}
+}
+
+.fade:not(.show) {
+	opacity: 0
+}
+
+.collapse:not(.show) {
+	display: none
+}
+/* end of super hack */
+
+/**********************************************/
+/***************** ACCESS BOX *****************/
+/**********************************************/
+
+.canliiContent div.accessBox table {
+	empty-cells: show;
+	border-collapse: collapse;
+	color: #808080;
+}
+
+.canliiContent div.accessBox table {
+	width: 7ex;
+	text-align: center;
+}
+
+.canliiContent div.accessBox table td.empty {
+	background-color: #f6f7f8;
+	color: #f6f7f8;
+	border: 2px solid #fff;
+}
+
+.canliiContent div.items ul,
+.canliiContent div.items ol,
+.canliiContent div.accessBox ul,
+.canliiContent div#statuteVersions ul {
+	list-style-type: none;
+	margin-left:0;
+}
+
+.canliiContent div.accessBox ul {
+	margin: .5em 0;
+	color: #808080;
+}
+
+.canliiContent .monthNavigationList li {
+	width: 5.7%;
+	text-align: center;
+	display: inline-block !important;
+}
+
+.canliiContent .yearNavigationList {
+	border-spacing: 0 !important;
+	margin-left: 0 !important;
+}
+
+.canliiContent .pageNavigationList ul {
+	margin: 0;
+}
+
+.canliiContent .yearNavigationList {
+	border-collapse: separate !important;
+	border-spacing: 4px !important;
+	margin-left: -4px;
+	width: 100%;
+}
+
+.canliiContent .yearNavigationList a {
+	display: block;
+}
+
+.canliiContent .yearNavigationList h1,
+.canliiContent .yearNavigationList h2,
+.canliiContent .yearNavigationList h3,
+.canliiContent .yearNavigationList h4,
+.canliiContent .yearNavigationList h5,
+.canliiContent .yearNavigationList h6 {
+	margin: 0;
+}
+
+.canliiContent div.accessBoxTop ul.monthNavigationList {
+	margin: 2em 0 .5em 0;
+}
+
+.canliiContent div.accessBoxBottom ul.monthNavigationList {
+	margin: .5em 0 2em 0;
+}
+
+.canliiContent div.accessBoxTop ul.monthNavigationList a {
+	display: inline;
+}
+
+.canliiContent div.items ul li,
+.canliiContent div.items ol li {
+	position: relative;
+	padding: 0;
+	margin: 4px 0;
+}
+
+.canliiContent div.items ul li.doctrineItem,
+.canliiContent div.items ol li.doctrineItem {
+	margin: 0pt 0pt 1ex 6ex;
+}
+
+.canliiContent .spaceTop {
+	padding-top: 20px;
+}
+
+.canliiContent div#doctrineWorks ul {
+	margin: 0;
+}
+
+.canliiContent div#doctrineWorks li.result {
+	list-style-type: none;
+	margin: 10px 0;
+}
+
+.canliiContent div#doctrineWorks span.warning {
+	font-weight: bold;
+	color: red;
+}
+
+.canliiContent div.accessBox ul li {
+	display: inline;
+	margin-right: 5px;
+}
+
+.canliiContent div.accessBox {
+	margin-top:1rem;
+	margin-bottom:1rem;
+}
+
+.canliiContent p.lastUpdate {
+	margin-top: 0;
+	margin-bottom: 1em;
+}
+
+.canliiContent .accessBox li {
+	display: inline-block !important;
+	margin-right: 1.9% !important;
+}
+
+.canliiContent .accessBox li:last-child {
+	margin-right: 0 !important;
+}
+
+/**********************************************/
+/****** Everything lists (but as tables) ******/
+/**********************************************/
+.row-stripped:not(.no-strip):nth-child(even){
+	background-color: #f2f3f4;
+}
+.row-stripped:not(.no-strip):nth-child(odd){
+	background-color: transparent;
+}
+
+.canliiContent div#courtPractices {
+	line-height: 2;
+}
+
+.canliiContent div.items table td.canlii-label,
+.canliiContent div.items table td.labelPrint,
+.canliiContent div.items div.canlii-label,
+.canliiContent .canlii-label {
+	color: var(--main-label-color);
+}
+
+.canliiContent div.items table td.labelPrint {
+	vertical-align: bottom;
+}
+
+.canliiContent div#statutesListing div.items table,
+.canliiContent div#regulationsListing div.items table {
+	empty-cells: show;
+	width: 98%;
+}
+.canliiContent div#statutesListing div.items tr.odd td,
+.canliiContent div#regulationsListing div.items tr.odd td {
+	background-color: #f4f4f4;
+}
+
+.canliiContent div#statutesListing div.items tr.even td,
+.canliiContent div#regulationsListing div.items tr.even td {
+	background-color: #fff;
+}
+
+.canliiContent div#statutesListing div.items td.left,
+.canliiContent div#regulationsListing div.items td.left {
+	width: 50%;
+}
+
+.canliiContent div#statutesListing div.items td.right,
+.canliiContent div#regulationsListing div.items td.right {
+	width: 45%;
+}
+
+.canliiContent div#statuteVersions div.items table td {
+	padding: 0 1em 0 0;
+}
+
+.canliiContent div.jurisdictions div.items table,
+.canliiContent div#doctrineWorks div.items table {
+	width: 100%;
+}
+
+.canliiContent div.jurisdictions div.items table tr.odd,
+.canliiContent div#doctrineWorks div.items table tr.odd {
+	background-color: #f6f7f8;
+}
+
+.canliiContent div.jurisdictions div.items table td,
+.canliiContent div#doctrineWorks div.items table td {
+	padding-right: .5em;
+}
+
+.canliiContent div.jurisdictions div.items table thead td,
+.canliiContent div#doctrineWorks div.items table thead td {
+	text-align: left;
+	font-weight: normal;
+	vertical-align: middle;
+}
+
+.canliiContent div.jurisdictions div.items table td.date,
+.canliiContent div.jurisdictions div.items table thead td.date {
+	white-space: nowrap;
+	text-align: center;
+	width: 140px;
+}
+
+/**********************************************/
+/*************** BETA MENTION *****************/
+/**********************************************/
+
+.canliiContent .beta {
+	position:absolute;
+	top: 36px;
+	left:140px;
+	font-size:18px;
+	padding: 3px;
+	color:white;
+	background-color:#BF0D0B;
+	text-transform: uppercase;
+
+	transform: rotate(-20deg);
+  	-ms-transform: rotate(-20deg);
+
+	border-radius: 4px 4px 4px 4px;
+	box-shadow: 1px 0 4px rgba(0, 0, 0, 0.4);
+	line-height:18px;
+}
+
+.canliiContent #betaSplash {
+	left: 530px;
+	top: 100px;
+	font-size: 21px;
+	line-height: 28px;
+	padding:2px 6px;
+}
+
+/* banniere pour feedback et passer a canlii classique */
+.canliiContent div.banner-canlii{
+    display: block;
+    /*float: right;*/
+    /*margin:5px;*/
+    position:absolute;
+    bottom:3px;
+    right:125px;
+}
+
+
+.canliiContent div.banner-feedback:hover {
+    cursor: pointer;
+}
+
+.canliiContent div.banner-feedback {
+    display: inline-block;
+    margin:0 5px;
+    background-color:#BF0D0B;
+    border-radius:4px;
+    padding:3px;
+    color: white;
+    box-shadow: 1px 0px 4px rgba(0, 0, 0, 0.5);
+    text-shadow: 0px -1px 0px rgba(0, 0, 0, 0.75);
+}
+
+/* decoration pour le bouton beta */
+.canliiContent .return-to-classic {
+    display:inline-block;
+    background-color:var(--main-link-color);
+    padding:0 2px;
+    color:white;
+    margin: 0 3px;
+    -webkit-transform:rotate(-6deg);
+    -moz-transform:rotate(-6deg);
+    -ms-transform: rotate(-6deg);
+    -o-transform: rotate(-6deg);
+    transform:rotate(-7deg);
+}
+
+/* canlii connects */
+
+h2 a.canliiConnectsLink {
+	font-size: 24px;
+}
+
+.canliiConnectsLink {
+	font-weight: bold;
+	white-space: nowrap;
+}
+
+.canliiConnectsLink .canliiPart {
+	color: var(--main-link-color);
+	font-weight: normal;
+}
+
+.canliiConnectsLink .dotPart {
+	color: #bf0d0b;
+	margin: 0 1px;
+}
+
+.canliiConnectsColor {
+	color: #05415C;
+}
+
+.footer-column-header {
+	font-weight: bold;
+}
+
+span.nowrap {
+	white-space: nowrap;
+}
+
+/* end canlii connects */
+
+/** DLR-PDF **/
+
+#dlr-pdf-print-warning {
+    display: none;
+    text-align: center;
+}
+
+/** COMPACT RESULTS **/
+
+svg.expand-img,
+svg.compact-img,
+svg.framed-img,
+svg.unframed-img {
+	display: inline-block; 
+	color: #777; 
+	fill: #777;
+	
+	transition: all 0.3s ease;
+	-webkit-transition: all 0.3s ease;
+	-ms-transition: all 0.3s ease;
+}
+
+svg.expand-img:hover,
+svg.compact-img:hover,
+svg.framed-img:hover,
+svg.unframed-img:hover {
+	color: #484848; 
+	fill: #484848; 
+}
+
+svg.framed-img rect.white,
+svg.unframed-img rect.white {
+	color: white; 
+	fill: white;
+}
+
+.context-compact {
+	display: none;
+}
+
+div#searchResults .result.compact {
+	margin-bottom: 0 !important;
+}
+
+.compact .date,
+.compact .ai-content,
+.compact .keywords,
+.compact .subjects,
+.compact .snippet,
+.compact .context,
+.compact .versions,
+.compact .part,
+.compact .hidden-compact,
+.compact .replacedLegislations,
+.context-compact {
+	display: none !important;
+}
+
+.compact .context-compact {
+	display: inline;
+}
+
+.result .index {
+	position: relative;
+}
+
+.result .reduce,
+.result .expand {
+	display: none;
+	background-color: var(--slate-100);
+	padding: 2px;
+	border-radius: 2px;
+	border: 1px solid #ccc;
+	cursor: pointer;
+	font-size: 8px;
+
+	transition: background-color 0.3s ease;
+	-webkit-transition: background-color 0.3s ease;
+	-ms-transition: background-color 0.3s ease;
+}
+
+.result .reduce:hover,
+.result .expand:hover {
+	background-color: var(--slate-200);
+}
+
+.compact .expand {
+	display: inline;
+}
+
+.full .reduce {
+	display: inline;
+}
+
+.bootstrap .tooltip-inner,
+.bootstrap .popover {
+    max-width: 800px;
+    text-align: left;
+	font-size: 12px;
+}
+
+.bootstrap .tooltip.bigger-tooltip .tooltip-inner {
+	font-size: 14px;
+	padding: 6px 12px;
+    min-width: 300px;
+	max-width: 750px;
+}
+
+.bootstrap .tooltip.show {
+	opacity: 1;
+}
+
+.toggle-on.btn,
+.toggle-off.btn {
+	padding-top: 4px;
+	margin-bottom: 0;
+}
+
+.friends-logo-card {
+	height:100px;
+	margin:1em;
+	padding:1em;
+	box-shadow:0 2px 4px 0 rgba(0, 0, 0, 0.2), 0 3px 5px 0 rgba(0, 0, 0, 0.19) ;
+}
+
+.card {
+	transition: box-shadow .3s;
+}
+
+.card:hover {
+	box-shadow: 0 5px 20px 0 rgb(0, 0, 0, 0.1);
+}
+
+.card-body {
+	text-align: center;
+}
+
+.card-body ul {
+	text-align: left;
+}
+
+.card-body a.btn {
+	background-color: var(--main-link-color);
+	color: white !important;
+	text-decoration: none !important;
+}
+
+.card-body a.btn:hover {
+	background-color: #0056b3;
+}
+
+div.resultCitationSearchUrl {
+	margin-bottom: 10px;
+}
+
+/* enrichissements */
+.show-more {
+	display: none;
+}
+
+.show-more.snippet {
+	display: inline;
+}
+
+.show-more-link-icon {
+	position: absolute;
+	top: 0;
+	right: 0;
+}
+
+.show-more-link-icon i {
+	font-size: 20px;
+	color: #484848;
+}
+
+div.ai-content {
+	border: 1px solid var(--gray-200);
+	border-radius: 0.375rem;
+}
+
+div.ai-content span.etiquette {
+	position: relative;
+	right: 0;
+	background: linear-gradient(12deg, #f5f5f5 33.28%, #eee 88.35%);
+	color: #6C6C6C;
+	top: -4px;
+	float: right;
+	padding: 2px 7px;
+	border-bottom-left-radius: 0.375rem;
+	border-top-right-radius: 0.375rem;
+	margin-left: 10px;
+	font-size: 12px;
+}
+
+div.ai-content i.fa-info-circle {
+	cursor: help;
+}
+
+div.ai-content i.fa-info-circle:hover {
+	color: var(--slate-400);
+	transition: color 0.3s ease;
+}
+
+div.ai-content div.keywords {
+	font-style: italic;
+}
+
+div.keywords p.oneliner {
+	display: -webkit-box;
+	overflow: hidden;
+
+	-webkit-line-clamp: 1;
+	-webkit-box-orient: vertical;
+}
+
+/** Tipped overrides */
+
+.tpd-content,
+.tpd-title,
+.tpd-size-x-small .tpd-content,
+.tpd-size-x-small .tpd-title,
+.tpd-size-small .tpd-content,
+.tpd-size-small .tpd-title,
+.tpd-size-medium .tpd-content,
+.tpd-size-medium .tpd-title,
+.tpd-size-large .tpd-content,
+.tpd-size-large .tpd-title {
+    font-size: unset;
+}
+
+.tpd-skin-dark a,
+.tpd-skin-dark a:hover,
+.tpd-skin-light a,
+.tpd-skin-light a:hover,
+.tpd-skin-gray a,
+.tpd-skin-gray a:hover,
+.tpd-skin-red a,
+.tpd-skin-red a:hover,
+.tpd-skin-green a,
+.tpd-skin-green a:hover,
+.tpd-skin-blue a,
+.tpd-skin-blue a:hover,
+.tpd-skin-lightyellow a,
+.tpd-skin-lightyellow a:hover,
+.tpd-skin-lightblue a,
+.tpd-skin-lightblue a:hover,
+.tpd-skin-lightpink a,
+.tpd-skin-lightpink a:hover {
+    color: unset;
+}
+
+/** Commentary */
+
+@keyframes postScrollHl {
+	0%   {opacity: 0;}
+	50%  {opacity: 1;}
+	100% {opacity: 0;}
+}
+
+@media (min-width: 768px) and (max-width: 979px) {
+	
+	div#searchBox div#searchBoxContainer {
+		margin-left: 4px;
+	}
+	
+	div.container.pl-0 {
+		margin-left: 4px;
+	}
+	
+	div#cookieConsentBanner {
+		padding-left: 15%;
+		padding-right: 15%;
+	}
+}
+
+/* phones, up to portrait tablets and large phones */
+@media (max-width: 767px) {
+
+	.canliiContent div.items table td.canlii-label,
+	.canliiContent div.items table td.labelPrint {
+		white-space: normal;
+	}
+	
+	.canliiContent div.accessBox select.arbitratorSelect {
+		width: auto;
+	}
+	
+	div#dbScopeTabs,
+	div#arbitratorTabs {
+		white-space: nowrap;
+    	overflow-x: scroll;
+	}
+	
+	div#dbScopeTabs ul.nav-tabs,
+	div#arbitratorTabs ul.nav-tabs {
+		flex-wrap: nowrap;
+	}
+	
+	div#dbScopeTabs li.nav-item,
+	div#arbitratorTabs li.nav-item {
+		float: none;
+    	display: inline-block;
+	}
+	
+	div#cookieConsentBanner {
+		padding-left: 5%;
+		padding-right: 5%;
+	}
+
+	#canlii-header #canlii-logo {
+		flex: 1 0 0;
+	}
+
+	#canlii-header #canlii-breadcrumbs {
+		display: none !important;
+	}
+
+	button#surveyModalTrigger,
+	button#backToTop {
+		right: 1.25rem;
+	}
+}
+
+@media (max-width: 767px) and (orientation: landscape) {
+	
+	#canlii-header {
+		padding: var(--1) var(--4);
+	}
+}
+
+/* landscape tablets, up to laptops/desktops */
+@media only screen and (min-width: 768px) and (max-width: 991px) {
+
+}
+
+/* all small screens, up to ipad pro */
+@media only screen and (max-width: 1024px) and (max-height: 1366px) {
+	#canlii-header {
+		gap: 8px;
+	}
+
+	#canlii-header .gap-xl {
+		gap: 16px;
+	}
+
+	#canlii-header .highlight-input {
+		display: none;
+	}
+
+	#canlii-header #canlii-login .signup {
+		display: none;
+	}
+
+	#canlii-header #canlii-login .login-text {
+		display: none;
+	}
+
+	#canlii-header #canlii-login .login-icon {
+		display: inline-block;
+	}
+
+	#canlii-header #highlight-mobile-button {
+		display: flex;
+	}
+}
+
+@media screen and (max-width: 1600px) {
+
+	#canlii-header #canlii-breadcrumbs {
+		gap: 8px;
+	}
+}
+
+@media print {
+
+	@page {
+		margin: 2.5em;
+	}
+
+	/* fixes a bug in firefox where only the first page is printed with a blank second page */
+	body {
+		display: block;
+	}
+
+	footer.bootstrap {
+		border-top: none;
+	}
+
+	#canlii-header {
+		position: static;
+		background: transparent;
+		overflow-x: visible;
+	}
+
+	#canlii-header #canlii-logo img {
+		width: 100px;
+		height: 30px;
+	}
+
+	#canlii-header #canlii-breadcrumbs {
+		display: none;
+	}
+
+	#canlii-header #canlii-lang-toggler {
+		display: none;
+	}
+
+	.bootstrap a[href]:after {
+		content: "";
+	}
+
+	span.canliiCitation,
+	span.nowrap {
+		white-space: normal;
+	}
+
+	div.tpd-tooltip {
+		display: none;
+	}
+}

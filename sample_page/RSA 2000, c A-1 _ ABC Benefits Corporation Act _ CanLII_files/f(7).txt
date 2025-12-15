@@ -1,0 +1,124 @@
+import { lbConstants } from '../lexbox-constants.js'
+
+const { default: loadResource } = await import(`../utils/resource-loader.js?v=${lbConstants.projectVersion}`);
+const SVG_ICON_CLASS = 'icon';
+
+const ATTR_ICON_NAME = 'icon-name';
+const ATTR_NO_SQUARE_RATIO = 'no-square-ratio';
+const ATTR_ANIMATED = 'animated';
+const ATTR_ANIMATION_NAME = 'animation';
+
+const ATTR_TO_CLASS = {
+    [ATTR_NO_SQUARE_RATIO]: 'not-square',
+    [ATTR_ANIMATED]: 'animated'
+};
+
+const CUSTOM_ELEMENT_TPL = `
+<link rel="stylesheet" href="/lb/dist/plugin/css/websites/${lbConstants.pluginThemeName}/lb-icon.css?v=${lbConstants.projectVersion}" />
+<span class="${SVG_ICON_CLASS} placeholder"></span>
+`;
+
+const svgIcons = await fetchSvgIcons();
+const icons = new Map();
+
+async function fetchSvgIcons() {
+    const svgResource = await loadResource(
+        `${lbConstants.svgAssetsPath}?v=${lbConstants.projectVersion}`,
+        lbConstants.hostBaseUrl
+    );
+    const svgDocument = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svgDocument.innerHTML = svgResource;
+    return svgDocument.firstElementChild;
+}
+
+function symbolToSvg(svgSymbol) {
+    const svgElement = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svgElement.setAttribute('viewBox', svgSymbol.getAttribute('viewBox'));
+    svgElement.setAttribute('width', '0px');
+    svgElement.setAttribute('height', '0px');
+
+    svgElement.append(...Array.from(svgSymbol.children)
+                              .filter(child => child.tagName !== 'title'));
+
+    return svgElement;
+}
+
+function getSvg(iconId) {
+    if (!icons.has(iconId)) {
+        const symbol = svgIcons.querySelector(`#${iconId}`);
+        icons.set(iconId, symbolToSvg(symbol));
+    }
+
+    return icons.get(iconId).cloneNode(true);
+}
+
+function getIcon(iconId) {
+    const svgIcon = getSvg(iconId);
+    svgIcon.classList.add(SVG_ICON_CLASS, iconId);
+
+    return svgIcon;
+}
+export default class LexboxIconElement extends HTMLElement {
+    constructor() {
+        super();
+        this.attachShadow({ mode: 'open' });
+        this.shadowRoot.innerHTML = CUSTOM_ELEMENT_TPL;
+        this.setIcon = this.setIcon.bind(this);
+        this.setInternalClass = this.setInternalClass.bind(this);
+        this.setAnimationClass = this.setAnimationClass.bind(this);
+    }
+
+    static get observedAttributes () {
+        return [ATTR_ICON_NAME, ATTR_NO_SQUARE_RATIO, ATTR_ANIMATED, ATTR_ANIMATION_NAME];
+    }
+
+    connectedCallback () {
+
+    }
+
+    disconnectedCallback () {
+
+    }
+
+    attributeChangedCallback (name, oldValue, newValue) {
+        if (name === ATTR_ICON_NAME && newValue) {
+            this.setIcon(newValue);
+        }
+        else if (name === ATTR_ANIMATION_NAME) {
+            this.setAnimationClass(oldValue, newValue);
+        }
+        else {
+            this.setInternalClass(name);
+        }
+    }
+
+    setIcon(iconId) {
+        const newSvg = getIcon(iconId);
+
+        if (newSvg) {
+            this.setInternalClass(ATTR_ANIMATED, newSvg);
+            this.setInternalClass(ATTR_NO_SQUARE_RATIO, newSvg);
+            this.setAnimationClass(null, this.getAttribute(ATTR_ANIMATION_NAME), newSvg);
+            this.shadowRoot.replaceChild(newSvg, this._svgElement);
+        }
+    }
+
+    setInternalClass(attrName, svg = this._svgElement) {
+        svg.classList.toggle(ATTR_TO_CLASS[attrName], this.hasAttribute(attrName));
+    }
+
+    setAnimationClass(from, to, svg = this._svgElement) {
+        svg.classList.remove('animation--' + from);
+        svg.classList.toggle('animation--' + to, !!to);
+    }
+
+    get _svgElement() {
+        return this.shadowRoot.querySelector(`.${SVG_ICON_CLASS}`);
+    }
+};
+
+if (!customElements.get('lb-icon')) { // if already defined, do nothing (e.g. same script imported twice)
+    customElements.define('lb-icon', LexboxIconElement);
+}
+
+//# sourceURL=/lb/plugin-app/js/2.0/custom-elements/lexbox-icon.js

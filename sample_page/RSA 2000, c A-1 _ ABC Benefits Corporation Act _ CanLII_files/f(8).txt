@@ -1,0 +1,25 @@
+.lb-login-wrapper {
+  background-color: #fff;
+  border-radius: 2px;
+  box-shadow: 1px 2px 3px -1px rgba(0, 0, 0, 0.8);
+  cursor: default;
+  font-size: 1rem;
+  line-height: normal;
+  opacity: 0;
+  overflow: hidden;
+  position: absolute;
+  top: calc(100% + 2px);
+  transition: opacity 0.1s linear;
+  white-space: normal;
+  width: 45ch;
+  z-index: 999999;
+}
+.lb-login-wrapper.flush-right {
+  left: auto;
+  right: 0;
+}
+.lb-login-wrapper.flush-left {
+  left: 0;
+  right: auto;
+}
+/*# sourceMappingURL=lb-login-wrapper.css.map */

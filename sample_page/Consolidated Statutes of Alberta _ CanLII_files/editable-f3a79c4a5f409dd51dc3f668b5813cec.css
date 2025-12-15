@@ -1,0 +1,115 @@
+/* Everything help */
+
+.canliiContent span.annotation {
+	font-weight: bolder;
+	color: #bf0e08;
+}
+
+.canliiContent table#navigationTable {
+	border: 0;
+	border-spacing: 0;
+	border-collapse: collapse;
+	font-size: .8em;
+}
+
+.canliiContent table#navigationTable p {
+	margin: 0;
+}
+
+.canliiContent table#navigationTable td {
+	vertical-align: top;
+}
+
+.canliiContent table#navigationTable td.pointer {
+	text-align: right;
+	width: 24px;
+}
+
+.canliiContent table#navigationTable h4 {
+	white-space: nowrap;
+}
+/* End of everything help */
+
+
+/* Comments page stuff */
+
+.canliiContent div#commentForm input.securityField {
+	display: none;
+}
+
+.canliiContent div#commentForm table td.label {
+	width: 13em;
+	white-space: normal;
+	text-align: right;
+}
+
+.canliiContent div#commentForm ul.checkBoxList {
+	margin-left: -35px;
+}
+
+.canliiContent div#commentForm ul.checkBoxList label {
+	padding-left: 40px;
+}
+/* End of comments page stuff */
+
+/* Tools pages */
+.canliiContent p.nota {
+	font-style: italic;
+	margin-bottom: 2.5em;
+}
+
+.canliiContent ul.toc {
+	margin-bottom: 3em;
+}
+
+.canliiContent div.instructions {
+	padding-left: 3em;
+}
+
+.canliiContent ul.steps {
+	border-left: 3px solid #e0e2e2;
+	list-style: none;
+	margin-left: 6em;
+	padding: 0 0 0 5px;
+}
+
+.canliiContent div.instructions > p {
+	margin-left: 6em;
+}
+
+.canliiContent ul.steps li {
+	margin: 2em 0;
+	min-height: 4em;
+	padding-top: 6px;
+	position: relative;
+}
+
+.canliiContent ul.steps li p {
+	margin-top: 0;
+}
+
+.canliiContent ul.steps h2.number {
+	margin-left: -50px;
+}
+
+.canliiContent .lockOff { 
+	display: none; 
+	visibility: hidden; 
+} 
+
+.canliiContent .lockOn { 
+	display: block; 
+	visibility: visible; 
+	position: absolute; 
+	z-index: 999; 
+	top: 0px; 
+	left: 0px; 
+	width: 105%; 
+	height: 105%; 
+	background-color: #ccc; 
+	text-align: center; 
+	padding-top: 20%; 
+	filter: alpha(opacity=75); 
+	opacity: 0.75; 
+}
+/* End of Tool pages */
