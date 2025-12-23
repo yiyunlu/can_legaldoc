@@ -2,7 +2,9 @@
 使用 Playwright 的 CanLII 爬虫
 绕过反爬虫机制
 """
+import os
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
+import threading
 import time
 from typing import List, Dict, Optional
 from utils.config import config
@@ -13,7 +15,7 @@ from scraper.supabase_client import SupabaseClient
 
 
 class CanLIIPlaywrightScraper:
-    """使用 Playwright 的 CanLII 爬虫类"""
+    """使用 Playwright 的 CanLII 爬虫类 (支持持久化、人工介入、CDP与系统镜像)"""
     
     def __init__(self, use_checkpoint=True, headless=True, cdp_url: Optional[str] = None):
         """
@@ -22,7 +24,7 @@ class CanLIIPlaywrightScraper:
         Args:
             use_checkpoint: 是否使用断点续传
             headless: 是否使用无头模式
-            cdp_url: Chrome 远程调试地址 (例如 http://localhost:9222)
+            cdp_url: 开了远程调试的 Chrome 地址 (如 http://127.0.0.1:9222)
         """
         self.headless = headless
         self.cdp_url = cdp_url
@@ -30,206 +32,245 @@ class CanLIIPlaywrightScraper:
         self.db_client = SupabaseClient()
         self.checkpoint = Checkpoint() if use_checkpoint else None
         
+        # 浏览器实例管理
+        self.playwright = None
+        self.browser_context = None
+        self.user_data_dir = os.path.abspath(".browser_profile")
+        
         self.stats = {
             'total': 0,
             'success': 0,
             'failed': 0,
             'skipped': 0
         }
-    
-    def _fetch_page(self, url: str, wait_time: int = 2000, wait_selector: str = None) -> Optional[str]:
-        """
-        使用 Playwright 获取网页内容
+
+    def start(self):
+        """启动持久化浏览器环境或连接到 CDP"""
+        if self.browser_context:
+            return
+            
+        self.playwright = sync_playwright().start()
+
+        if self.cdp_url and not self.headless:
+            logger.info(f"正在连接到用户的真实浏览器 (CDP): {self.cdp_url}")
+            try:
+                # 连接到已打开的浏览器
+                browser = self.playwright.chromium.connect_over_cdp(self.cdp_url)
+                # 连接 CDP 时，通常直接使用第一个 Context
+                if browser.contexts:
+                    self.browser_context = browser.contexts[0]
+                else:
+                    self.browser_context = browser.new_context()
+                logger.info("CDP 连接成功，由于是在真实浏览器操作，将共享您的所有登录状态。")
+            except Exception as e:
+                logger.error(f"CDP 连接失败: {e}")
+                raise
+        else:
+            if self.headless:
+                logger.info("启动纯后台模式 (Headless)，将忽略 CDP 设置以确保不弹出窗口。")
+            else:
+                logger.info(f"正在启动 Playwright 浏览器 (Channel: chrome, Headless: {self.headless})...")
+            # 启动持久化上下文，优先使用系统 Chrome 通道
+            self.browser_context = self.playwright.chromium.launch_persistent_context(
+                user_data_dir=self.user_data_dir,
+                headless=self.headless,
+                channel="chrome", # 核心：使用本机的 Chrome 镜像
+                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                viewport={'width': 1366, 'height': 768},
+                args=[
+                    '--disable-blink-features=AutomationControlled',
+                    '--no-sandbox',
+                ],
+                ignore_https_errors=True,
+                java_script_enabled=True,
+            )
         
-        Args:
-            url: 页面URL
-            wait_time: 等待时间（毫秒）
-            wait_selector: 等待出现的CSS选择器
+        # 添加性能优化：如果是 Headless，禁止加载图片和 CSS
+        if self.headless:
+            self.browser_context.route("**/*.{png,jpg,jpeg,gif,webp,css,woff,woff2,ttf}", lambda route: route.abort())
+            logger.info("已开启 Headless 性能优化：禁止加载图片、样式和字体资源。")
+
+        # 添加 stealth 脚本 (如果不是 CDP)
+        if not self.cdp_url or self.headless:
+            self.browser_context.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+            """)
+
+    def stop(self):
+        """关闭浏览器环境"""
+        if self.browser_context:
+            self.browser_context.close()
+            self.browser_context = None
+        if self.playwright:
+            self.playwright.stop()
+            self.playwright = None
+        logger.info("浏览器环境已关闭")
+
+    def _check_captcha(self, page) -> bool:
+        """检查是否存在验证码或拦截页面"""
+        captcha_indicators = [
+            "Verify you are human",
+            "Checking if the site connection is secure",
+            "hcaptcha-container",
+            "g-recaptcha",
+            "Cloudflare",
+            "DataDome",
+            "Access Denied"
+        ]
+        
+        content = page.content()
+        for indicator in captcha_indicators:
+            if indicator in content:
+                logger.warning(f"检测到检测/验证码页面 (特征: {indicator})")
+                return True
+        return False
+
+    def _handle_captcha(self, page):
+        """处理验证码逻辑"""
+        if self.headless:
+            logger.error("在无头模式下检测到验证码，无法自动通过。请切换到可视化模式并手动操作。")
+            raise Exception("CAPTCHA_DETECTED")
+        
+        logger.info("=" * 40)
+        logger.info("检测到验证码！请在浏览器窗口手动完成验证。")
+        logger.info("程序将等待您完成操作...")
+        logger.info("=" * 40)
+        
+        # 循环检查，直到验证码页面消失
+        while self._check_captcha(page):
+            # 增加对停止信号的检查 (Add stop signal check)
+            if hasattr(self, 'stop_event') and self.stop_event and self.stop_event.is_set():
+                logger.info("验证码等待期间检测到停止信号，中断等待。")
+                raise Exception("STOP_REQUESTED")
+                
+            time.sleep(2)
+            # 用户可能已经手动通过了，或者页面跳转了
+            if not self._check_captcha(page):
+                logger.info("验证码疑似已手动通过，继续任务...")
+                break
+        
+    def _fetch_page(self, url: str, wait_selector: str = None) -> Optional[str]:
+        """使用现有的上下文获取网页内容"""
+        if not self.browser_context:
+            self.start()
             
-        Returns:
-            Optional[str]: HTML内容或None
-        """
+        page = self.browser_context.new_page()
         try:
-            logger.debug(f"正在获取: {url}")
+            logger.debug(f"正在访问: {url}")
             
-            with sync_playwright() as p:
-                if self.cdp_url:
-                    # 连接到现有的浏览器实例
-                    logger.info(f"正在连接到现有浏览器: {self.cdp_url}")
-                    browser = p.chromium.connect_over_cdp(self.cdp_url)
-                    # 使用第一个上下文或创建新的
-                    context = browser.contexts[0] if browser.contexts else browser.new_context()
-                else:
-                    # 启动浏览器 - 添加反爬虫参数
-                    browser_args = [
-                        '--disable-blink-features=AutomationControlled',
-                        '--no-sandbox',
-                        '--disable-setuid-sandbox',
-                        '--disable-infobars',
-                        '--window-position=0,0',
-                        '--ignore-certificate-errors',
-                        '--ignore-ssl-errors',
-                        '--disable-translate',
-                    ]
-                    
-                    browser = p.chromium.launch(
-                        headless=self.headless,
-                        args=browser_args
-                    )
-                    
-                    # 创建上下文
-                    context = browser.new_context(
-                        user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                        viewport={'width': 1366, 'height': 768},
-                        locale='en-US',
-                        timezone_id='America/Edmonton',
-                        geolocation={'latitude': 53.5461, 'longitude': -113.4938}, # Edmonton coordinates
-                        permissions=['geolocation'],
-                        java_script_enabled=True,
-                    )
-                    
-                    # 添加 stealth 脚本
-                    context.add_init_script("""
-                        Object.defineProperty(navigator, 'webdriver', {
-                            get: () => undefined
-                        });
-                    """)
-                
-                # 创建新页面
-                page = context.new_page()
-                
-                # 访问URL
+            # 访问 URL
+            try:
+                page.goto(url, wait_until='networkidle', timeout=60000)
+            except Exception:
+                page.goto(url, wait_until='domcontentloaded', timeout=60000)
+            
+            # 检查验证码
+            if self._check_captcha(page):
+                self._handle_captcha(page)
+            
+            # 等待特定元素加载
+            if wait_selector:
                 try:
-                    page.goto(url, wait_until='networkidle', timeout=60000)
+                    page.wait_for_selector(wait_selector, state='visible', timeout=10000)
                 except Exception:
-                    page.goto(url, wait_until='domcontentloaded', timeout=60000)
-                
-                # 等待特定元素加载
-                if wait_selector:
-                    try:
-                        logger.info(f"正在等待元素加载: {wait_selector}")
-                        page.wait_for_selector(wait_selector, state='visible', timeout=60000)
-                        logger.info("元素已加载")
-                    except Exception as e:
-                        logger.warning(f"等待元素 {wait_selector} 超时: {e}")
-                else:
-                    # 默认等待时间
-                    page.wait_for_timeout(wait_time)
-                
-                # 额外的稳定等待
+                    # 如果超时，再次检查是否是验证码
+                    if self._check_captcha(page):
+                        self._handle_captcha(page)
+                        # 如果过完验证码，重新等待
+                        page.wait_for_selector(wait_selector, state='visible', timeout=30000)
+            else:
                 page.wait_for_timeout(2000)
-                
-                # 模拟人类行为
-                if not self.headless:
-                    # 只有在有头模式下才需要模拟鼠标
-                    try:
-                        page.mouse.move(100, 100)
-                        page.mouse.down()
-                        page.wait_for_timeout(200)
-                        page.mouse.up()
-                    except Exception:
-                        pass
-                
-                # 获取HTML内容
-                content = page.content()
-                
-                # 关闭浏览器
-                browser.close()
-                
-                # 延迟以遵守速率限制
-                time.sleep(config.REQUEST_DELAY)
-                
-                return content
-            return None
             
+            # 模拟微小的人类滚动动作
+            page.evaluate("window.scrollBy(0, 100)")
+            
+            content = page.content()
+            return content
         except Exception as e:
+            if "CAPTCHA_DETECTED" in str(e) or "STOP_REQUESTED" in str(e):
+                raise
             logger.error(f"获取页面失败: {e}")
-            logger.error(f"URL: {url}")
             return None
+        finally:
+            page.close()
+            # 基础延迟
+            time.sleep(config.REQUEST_DELAY)
     
-    def fetch_statute_list(self) -> List[Dict[str, str]]:
+    def fetch_statute_list(self, index_url: Optional[str] = None) -> List[Dict[str, str]]:
         """
         获取法规列表
         
         Returns:
             List[Dict]: 法规列表
         """
-        logger.info(f"正在获取法规列表: {config.INDEX_URL}")
+        target_url = index_url or config.INDEX_URL
+        if not target_url:
+            logger.error("未指定目标 URL")
+            return []
+            
+        logger.info(f"正在获取法规列表: {target_url}")
         
+        if not self.browser_context:
+            self.start()
+            
+        page = self.browser_context.new_page()
         try:
-            # 使用自定义逻辑获取列表页，处理"显示更多"按钮
-            logger.debug(f"正在获取: {config.INDEX_URL}")
+            page.goto(target_url, wait_until='networkidle', timeout=60000)
             
-            with sync_playwright() as p:
-                if self.cdp_url:
-                    logger.info(f"正在连接到现有浏览器: {self.cdp_url}")
-                    browser = p.chromium.connect_over_cdp(self.cdp_url)
-                    context = browser.contexts[0] if browser.contexts else browser.new_context()
-                else:
-                    browser = p.chromium.launch(headless=self.headless)
-                    context = browser.new_context(
-                        user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                    )
-                
-                page = context.new_page()
-                page.goto(config.INDEX_URL, wait_until='networkidle', timeout=60000)
-                
-                # 等待列表容器
-                page.wait_for_selector('#legislationsContainer', state='visible', timeout=60000)
-                
-                # 处理 "Show more results" 按钮
-                while True:
-                    try:
-                        # 查找按钮（支持多种可能的文本）
-                        button = page.get_by_text("Show more results", exact=True)
-                        
-                        if button.is_visible(timeout=2000):
-                            logger.info("发现 'Show more results' 按钮，正在点击...")
-                            button.click()
-                            # 等待加载
-                            page.wait_for_timeout(2000) 
-                        else:
-                            break
-                    except Exception:
+            # 检查验证码
+            if self._check_captcha(page):
+                self._handle_captcha(page)
+            
+            # 等待列表容器
+            page.wait_for_selector('#legislationsContainer', state='visible', timeout=60000)
+            
+            # 处理 "Show more results" 按钮
+            while True:
+                try:
+                    button = page.get_by_text("Show more results", exact=True)
+                    if button.is_visible(timeout=2000):
+                        logger.info("发现 'Show more results' 按钮，正在点击...")
+                        button.click()
+                        page.wait_for_timeout(2000) 
+                    else:
                         break
-                
-                # 获取完整 HTML
-                html_content = page.content()
-                
-                if not self.cdp_url:
-                    browser.close()
-                else:
-                    page.close()
-
-            if not html_content:
-                logger.error("获取法规列表失败")
-                return []
+                except Exception:
+                    break
             
+            html_content = page.content()
             statutes = self.parser.parse_statute_list(html_content)
-            logger.info(f"成功获取 {len(statutes)} 个法规")
-            
+            logger.info(f"成功解析 {len(statutes)} 个法规")
             return statutes
             
         except Exception as e:
-            logger.error(f"获取法规列表时出错: {e}")
+            logger.error(f"获取法规列表失败: {e}")
             return []
+        finally:
+            page.close()
     
-    def scrape_statute(self, statute_info: Dict[str, str]) -> bool:
+    def scrape_statute(self, statute_info: Dict[str, str], context: Optional[Dict] = None) -> bool:
         """
         爬取单个法规
         
         Args:
-            statute_info: 法规信息，包含 url, title, citation
+            statute_info: 法规信息，包含 url, title, citation, is_active
+            context: 抓取上下文，包含 jurisdiction_code, category, target_id
             
         Returns:
             bool: 是否成功
         """
         url = statute_info['url']
         title = statute_info['title']
+        context = context or {}
+        
+        # 即使断点记录显示已爬取，我们也同步一下状态（因为列表页就能拿到状态，且速度很快）
+        self.db_client.update_document_status(url, statute_info.get('is_active', True))
         
         # 检查是否已爬取
         if self.checkpoint and self.checkpoint.is_scraped(url):
-            logger.info(f"跳过已爬取的法规: {title}")
+            logger.info(f"跳过已爬取的法规内容: {title}")
             self.stats['skipped'] += 1
             return True
         
@@ -237,7 +278,6 @@ class CanLIIPlaywrightScraper:
             logger.info(f"正在爬取: {title}")
             
             # 获取详情页
-            # 使用较短的等待时间，或者等待特定的内容容器
             html_content = self._fetch_page(url, wait_selector='#originalDocument')
             if not html_content:
                 logger.error(f"获取详情页失败: {title}")
@@ -251,8 +291,15 @@ class CanLIIPlaywrightScraper:
                 self.stats['failed'] += 1
                 return False
             
-            # 保存到数据库
-            success = self.db_client.upsert_statute(statute_data)
+            # 合并上下文
+            save_data = {
+                **statute_data, 
+                **context,
+                "is_active": statute_info.get('is_active', True)
+            }
+            
+            # 保存到数据库 (使用 v3 架构)
+            success = self.db_client.upsert_document_v3(save_data)
             
             if success:
                 self.stats['success'] += 1
@@ -266,21 +313,28 @@ class CanLIIPlaywrightScraper:
                 return False
                 
         except Exception as e:
+            if "CAPTCHA_DETECTED" in str(e):
+                # 重新抛出，让 run() 捕获并停止
+                raise
             logger.error(f"爬取法规时出错: {e}")
             logger.error(f"法规: {title}")
             self.stats['failed'] += 1
             return False
     
-    def run(self, limit: Optional[int] = None, only_active: bool = True):
+    def run(self, limit: Optional[int] = None, only_active: bool = False, target_url: Optional[str] = None, context: Optional[Dict] = None, stop_event: Optional[threading.Event] = None):
         """
         运行爬虫
         
         Args:
             limit: 限制爬取数量（用于测试）
-            only_active: 是否只爬取有效的法规（排除已废除的）
+            only_active: 是否只爬取有效的法规（如果为False，则会记录并标记已废除的法规）
+            target_url: 指定爬取的目标URL
+            context: 抓取上下文，用于保存到 v3 数据库
+            stop_event: 停止信号
         """
+        self.stop_event = stop_event # 存储信号
         logger.info("=" * 60)
-        logger.info("CanLII Alberta 法规爬虫启动 (Playwright 版本)")
+        logger.info(f"CanLII 采集启动 (Playwright & 持久会话)")
         logger.info("=" * 60)
         
         # 测试数据库连接
@@ -288,39 +342,75 @@ class CanLIIPlaywrightScraper:
             logger.error("数据库连接失败，程序终止")
             return
         
-        # 获取法规列表
-        statutes = self.fetch_statute_list()
-        if not statutes:
-            logger.error("未获取到法规列表，程序终止")
-            return
-        
-        # 过滤
-        if only_active:
-            statutes = [s for s in statutes if s.get('is_active', True)]
-            logger.info(f"过滤后剩余 {len(statutes)} 个有效法规")
-        
-        # 限制数量
-        if limit:
-            statutes = statutes[:limit]
-            logger.info(f"限制爬取数量为 {limit}")
-        
-        self.stats['total'] = len(statutes)
-        
-        # 显示进度
-        if self.checkpoint:
-            progress = self.checkpoint.get_progress(len(statutes))
-            logger.info(f"进度: {progress['scraped']}/{progress['total']} "
-                       f"({progress['percentage']:.1f}%)")
-        
-        # 爬取每个法规
-        logger.info(f"开始爬取 {len(statutes)} 个法规...")
-        
-        for i, statute in enumerate(statutes, 1):
-            logger.info(f"\n进度: [{i}/{len(statutes)}]")
-            self.scrape_statute(statute)
-        
-        # 显示统计信息
-        self._print_stats()
+        try:
+            # 确保浏览器已启动
+            self.start()
+            
+            # 获取法规列表
+            # 使用传入的 target_url 或从 config 获取
+            statutes = self.fetch_statute_list(index_url=target_url)
+            if not statutes:
+                logger.error("未获取到法规列表，程序终止")
+                return
+            
+            # 过滤
+            if only_active:
+                statutes = [s for s in statutes if s.get('is_active', True)]
+                logger.info(f"过滤后剩余 {len(statutes)} 个有效法规")
+            
+            # statutes = statutes[:limit]  <-- REMOVED: Don't limit the list, limit the active scrapes
+            # logger.info(f"限制爬取数量为 {limit}")
+            
+            self.stats['total'] = len(statutes)
+            
+            # 显示进度
+            if self.checkpoint:
+                progress = self.checkpoint.get_progress(len(statutes))
+                logger.info(f"进度: {progress['scraped']}/{progress['total']} "
+                           f"({progress['percentage']:.1f}%)")
+            
+            # 爬取每个法规
+            logger.info(f"开始爬取 {len(statutes)} 个法规...")
+            
+            newly_scraped_count = 0
+            for i, statute in enumerate(statutes, 1):
+                if stop_event and stop_event.is_set():
+                    logger.info("检测到停止信号，正在中断采集...")
+                    break
+                
+                # Check if we reached the user-defined limit for NEW items
+                if limit and newly_scraped_count >= limit:
+                    logger.info(f"已达到预设的抓取限制 ({limit} 条新数据)，自动停止。")
+                    break
+                    
+                logger.info(f"\n进度: [{i}/{len(statutes)}]")
+                
+                # We need to know if it was skipped or scraped
+                url = statute['url']
+                is_already_scraped = self.checkpoint and self.checkpoint.is_scraped(url)
+                
+                try:
+                    self.scrape_statute(statute, context=context)
+                    
+                    # If it wasn't skipped, it counts as a 'scrape' action (success or failure)
+                    if not is_already_scraped:
+                        newly_scraped_count += 1
+                        
+                except Exception as e:
+                    if "CAPTCHA_DETECTED" in str(e):
+                        logger.error("检测到验证码拦截，任务终止。请切换模式或手动处理后重试。")
+                        break # 停止整个爬取循环
+                    if "STOP_REQUESTED" in str(e):
+                        logger.info("由于停止请求，任务已提前终止。")
+                        break
+                    raise # 重新抛出其他异常
+            
+            # 显示统计信息
+            self._print_stats()
+            
+        finally:
+            # 只有在 run 结束后才关闭浏览器
+            self.stop()
     
     def _print_stats(self):
         """打印统计信息"""

@@ -12,9 +12,53 @@ class HTMLParser:
     """HTML 解析器"""
     
     @staticmethod
+    def parse_statute_list_json(json_data: List[Dict]) -> List[Dict[str, str]]:
+        """
+        解析 JSON 格式的法规列表
+        
+        Args:
+            json_data: JSON 数据列表
+            
+        Returns:
+            List[Dict]: 法规列表
+        """
+        statutes = []
+        try:
+            logger.info(f"解析 JSON 数据，共 {len(json_data)} 条记录")
+            
+            for item in json_data:
+                title = item.get('title', '')
+                citation = item.get('citation', '')
+                path = item.get('path', '')
+                
+                if path and not path.startswith('http'):
+                    url = f"https://www.canlii.org{path}"
+                else:
+                    url = path
+                
+                # JSON return doesn't explicitly state 'is_active', but usually lists current ones.
+                # 'status' field might be empty or 'repealed'.
+                status = item.get('status', '').lower()
+                is_active = 'repealed' not in status
+                
+                statutes.append({
+                    'title': title,
+                    'citation': citation,
+                    'url': url,
+                    'is_active': is_active
+                })
+                
+            logger.info(f"成功解析 {len(statutes)} 个法规 (JSON)")
+            
+        except Exception as e:
+            logger.error(f"解析 JSON 列表失败: {e}")
+            
+        return statutes
+
+    @staticmethod
     def parse_statute_list(html_content: str) -> List[Dict[str, str]]:
         """
-        从索引页解析所有法规链接
+        从索引页解析所有法规链接 (HTML 模式 - 备用)
         
         Args:
             html_content: HTML 内容
@@ -27,6 +71,7 @@ class HTMLParser:
         """
         statutes = []
         
+
         try:
             soup = BeautifulSoup(html_content, 'lxml')
             
@@ -42,13 +87,13 @@ class HTMLParser:
             
             for row in rows:
                 try:
-                    # 提取引文（第一列）
-                    citation_td = row.find('td', class_='text-nowrap')
-                    citation = citation_td.get_text(strip=True) if citation_td else ''
+                    # 提取引文（始终是第一列）
+                    tds = row.find_all('td')
+                    citation = tds[0].get_text(strip=True) if tds else ''
                     
-                    # 提取标题和链接（第二列）
-                    # 匹配 /en/ab/laws/stat/ 或 /ab/laws/stat/
-                    link = row.find('a', class_='canlii', href=re.compile(r'(/en)?/ab/laws/stat/'))
+                    # 更加鲁棒的链接匹配：匹配 /ca/laws/stat/, /en/ab/laws/regu/, /fr/ca/laws/const/ 等
+                    # 不再强制要求 class='canlii'，因为部分页面结构可能不同
+                    link = row.find('a', href=re.compile(r'(/[a-z]{2})?/[a-z]{2}/laws/(stat|regu|const)/'))
                     
                     if link:
                         title = link.get_text(strip=True)
@@ -58,8 +103,9 @@ class HTMLParser:
                         if url and not url.startswith('http'):
                             url = f"https://www.canlii.org{url}"
                         
-                        # 检查是否标记为"已废除/未生效"
-                        status_span = row.find('span', string=re.compile(r'\[Repealed|spent|not in force\]'))
+                        # 检查是否标记为"已废除/未生效" (Improved regex for status detection)
+                        # Handles optional brackets and case-insensitivity
+                        status_span = row.find('span', string=re.compile(r'\[?(Repealed|spent|not in force)\]?', re.IGNORECASE))
                         is_active = status_span is None
                         
                         statute = {
@@ -68,8 +114,10 @@ class HTMLParser:
                             'url': url,
                             'is_active': is_active
                         }
-                        
                         statutes.append(statute)
+                    elif len(rows) > 0 and len(statutes) == 0 and rows.index(row) < 5:
+                        # 只在开始几行且没解析到东西时打印调试信息，避免日志爆炸
+                        logger.debug(f"行匹配失败调试 [Row {rows.index(row)}]: {str(row)[:200]}...")
                         
                 except Exception as e:
                     logger.warning(f"解析法规行失败: {e}")
@@ -166,10 +214,10 @@ class HTMLParser:
             str: 引文
         """
         # 尝试从URL提取
-        # URL格式: .../stat/rsa-2000-c-a-1/latest/...
-        match = re.search(r'/stat/([^/]+)/', url)
+        # URL格式: .../stat/rsa-2000-c-a-1/latest/... 或 .../const/30---31-vict-c-3/...
+        match = re.search(r'/(stat|regu|const)/([^/]+)/', url)
         if match:
-            statute_id = match.group(1)
+            statute_id = match.group(2)
             # 转换为标准引文格式
             # rsa-2000-c-a-1 -> RSA 2000, c A-1
             citation = statute_id.upper().replace('-', ' ')

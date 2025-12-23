@@ -1,53 +1,84 @@
 """
-断点续传模块
-保存和恢复爬取进度
+断点续传模块 (SQLite 升级版)
+保存和恢复爬取进度，支持海量数据去重
 """
 import json
+import sqlite3
+import os
 from pathlib import Path
-from typing import Set
+from typing import Set, Dict
 from .logger import logger
 
 
 class Checkpoint:
-    """断点管理类"""
+    """断点管理类 (SQLite 实现)"""
     
-    def __init__(self, checkpoint_file='checkpoint.json'):
+    def __init__(self, db_name='checkpoint.db'):
         """
         初始化断点管理器
         
         Args:
-            checkpoint_file: 断点文件路径
+            db_name: SQLite 数据库文件名
         """
-        self.checkpoint_file = Path(__file__).parent.parent / checkpoint_file
-        self.scraped_urls: Set[str] = set()
-        self.load()
+        self.root_dir = Path(__file__).parent.parent
+        self.db_path = self.root_dir / db_name
+        self.json_path = self.root_dir / 'checkpoint.json'
+        
+        # 初始化数据库连接 (check_same_thread=False 允许在多线程爬虫中使用)
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        self._init_table()
+        
+        # 自动执行迁移逻辑
+        self._migrate_from_json()
     
-    def load(self):
-        """从文件加载断点"""
-        if self.checkpoint_file.exists():
+    def _init_table(self):
+        """初始化数据表"""
+        try:
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS checkpoints (
+                    url TEXT PRIMARY KEY,
+                    scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            # 建立 URL 索引（虽然主键自带索引，但显式声明以示清晰）
+            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_url ON checkpoints(url)")
+            self.conn.commit()
+        except Exception as e:
+            logger.error(f"初始化 SQLite 断点表失败: {e}")
+    
+    def _migrate_from_json(self):
+        """从旧版 JSON 文件迁移数据"""
+        if self.json_path.exists():
             try:
-                with open(self.checkpoint_file, 'r', encoding='utf-8') as f:
+                logger.info(f"检测到旧版断点文件，正在执行 SQLite 迁移...")
+                with open(self.json_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    self.scraped_urls = set(data.get('scraped_urls', []))
-                logger.info(f"加载断点: 已爬取 {len(self.scraped_urls)} 个法规")
+                    scraped_urls = data.get('scraped_urls', [])
+                
+                if scraped_urls:
+                    # 批量插入以提升性能
+                    self.conn.executemany(
+                        "INSERT OR IGNORE INTO checkpoints (url) VALUES (?)",
+                        [(url,) for url in scraped_urls]
+                    )
+                    self.conn.commit()
+                    logger.info(f"成功迁移 {len(scraped_urls)} 条记录到 SQLite")
+                
+                # 迁移成功后，将旧文件重命名（保留作为备份，但不干扰以后加载）
+                backup_path = self.json_path.with_suffix('.json.bak')
+                self.json_path.rename(backup_path)
+                logger.info(f"旧版断点文件已备份为: {backup_path.name}")
+                
             except Exception as e:
-                logger.error(f"加载断点失败: {e}")
-                self.scraped_urls = set()
-        else:
-            logger.info("未找到断点文件，从头开始")
+                logger.error(f"迁移断点数据失败: {e}")
+
+    def load(self):
+        """兼容性方法：SQLite 模式下数据实时存储，无需手动 load"""
+        pass
     
     def save(self):
-        """保存断点到文件"""
-        try:
-            data = {
-                'scraped_urls': list(self.scraped_urls),
-                'count': len(self.scraped_urls)
-            }
-            with open(self.checkpoint_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-            logger.debug(f"保存断点: {len(self.scraped_urls)} 个URL")
-        except Exception as e:
-            logger.error(f"保存断点失败: {e}")
+        """兼容性方法：SQLite 模式下 add() 自动提交，无需手动 save"""
+        pass
     
     def add(self, url: str):
         """
@@ -56,7 +87,11 @@ class Checkpoint:
         Args:
             url: 法规URL
         """
-        self.scraped_urls.add(url)
+        try:
+            self.conn.execute("INSERT OR IGNORE INTO checkpoints (url) VALUES (?)", (url,))
+            self.conn.commit()
+        except Exception as e:
+            logger.error(f"添加断点失败: {url}, Error: {e}")
     
     def is_scraped(self, url: str) -> bool:
         """
@@ -68,14 +103,21 @@ class Checkpoint:
         Returns:
             bool: 是否已爬取
         """
-        return url in self.scraped_urls
+        try:
+            cursor = self.conn.execute("SELECT 1 FROM checkpoints WHERE url = ? LIMIT 1", (url,))
+            return cursor.fetchone() is not None
+        except Exception as e:
+            logger.error(f"查询断点失败: {url}, Error: {e}")
+            return False
     
     def reset(self):
         """重置断点"""
-        self.scraped_urls = set()
-        if self.checkpoint_file.exists():
-            self.checkpoint_file.unlink()
-        logger.info("断点已重置")
+        try:
+            self.conn.execute("DELETE FROM checkpoints")
+            self.conn.commit()
+            logger.info("断点已重置")
+        except Exception as e:
+            logger.error(f"重置断点失败: {e}")
     
     def get_progress(self, total: int) -> dict:
         """
@@ -87,7 +129,12 @@ class Checkpoint:
         Returns:
             dict: 进度信息
         """
-        scraped = len(self.scraped_urls)
+        try:
+            cursor = self.conn.execute("SELECT count(*) FROM checkpoints")
+            scraped = cursor.fetchone()[0]
+        except:
+            scraped = 0
+            
         remaining = total - scraped
         percentage = (scraped / total * 100) if total > 0 else 0
         
@@ -97,3 +144,10 @@ class Checkpoint:
             'total': total,
             'percentage': percentage
         }
+
+    def __del__(self):
+        """关闭连接"""
+        try:
+            self.conn.close()
+        except:
+            pass

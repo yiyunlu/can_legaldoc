@@ -2,11 +2,12 @@
 CanLII 爬虫核心模块
 处理网页请求、解析和数据存储
 """
-import requests
+from curl_cffi import requests
 import time
 from typing import List, Dict, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
-from requests.exceptions import RequestException, Timeout, HTTPError
+from requests.exceptions import RequestException, Timeout, HTTPError # curl_cffi raises compatible exceptions or its own
+import threading
 
 from utils.config import config
 from utils.logger import logger
@@ -25,16 +26,28 @@ class CanLIIScraper:
         Args:
             use_checkpoint: 是否使用断点续传
         """
+        # 使用 curl_cffi 的 Session
         self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': config.USER_AGENT,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1'
-        })
         
+        # 基础 Headers - 尽量简化，让 impersonate 处理核心指纹
+        self.session.headers = {
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Cache-Control": "max-age=0",
+            "Connection": "keep-alive",
+            "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"macOS"',
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Upgrade-Insecure-Requests": "1"
+        }
+        
+        # 预热 Session (获取 DataDome Cookie)
+        self._warm_up_session()
+
         self.parser = HTMLParser()
         self.db_client = SupabaseClient()
         self.checkpoint = Checkpoint() if use_checkpoint else None
@@ -46,10 +59,32 @@ class CanLIIScraper:
             'skipped': 0
         }
     
+    def _warm_up_session(self):
+        """访问主页及相关路径以获取必要的 Cookie 和建立连接指纹"""
+        try:
+            logger.info("正在预热 Session (模拟真实访问)...")
+            # 1. 模拟从 Google 搜索跳转或直接输入
+            self.session.get(
+                "https://www.canlii.org/en/",
+                impersonate="chrome124",
+                timeout=config.TIMEOUT
+            )
+            time.sleep(1)
+            # 2. 模拟点击一些静态资源或次级页面
+            self.session.get(
+                "https://www.canlii.org/static/canlii/css/canlii.css",
+                impersonate="chrome124",
+                timeout=config.TIMEOUT
+            )
+            logger.info("Session 预热完成")
+            time.sleep(2)
+        except Exception as e:
+            logger.warning(f"Session 预热失败: {e}")
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=10),
-        retry=retry_if_exception_type((RequestException, Timeout))
+        retry=retry_if_exception_type(Exception) # curl_cffi exceptions catch-all
     )
     def _fetch_page(self, url: str) -> Optional[str]:
         """
@@ -63,48 +98,107 @@ class CanLIIScraper:
         """
         try:
             logger.debug(f"正在获取: {url}")
-            response = self.session.get(url, timeout=config.TIMEOUT)
-            response.raise_for_status()
+            
+            # 更新 Referer 为 CanLII 以通过同站检查
+            headers = self.session.headers.copy()
+            if "canlii.org" in url:
+                headers["Referer"] = "https://www.canlii.org/"
+                headers["Sec-Fetch-Site"] = "same-origin"
+            
+            # 发送请求 (curl_cffi)
+            response = self.session.get(
+                url, 
+                impersonate="chrome124",
+                headers=headers,
+                timeout=config.TIMEOUT
+            )
+            
+            # curl_cffi 的 response 没有 raise_for_status，需要手动检查
+            if response.status_code >= 400:
+                # 记录详细错误
+                if response.status_code == 403:
+                    logger.error(f"访问被拒绝 (403): {url}")
+                    logger.debug(f"Response Body: {response.text[:200]}...")
+                elif response.status_code == 404:
+                    logger.warning(f"页面不存在 (404): {url}")
+                else:
+                    logger.error(f"HTTP错误 ({response.status_code}): {url}")
+                
+                # 只有 404 不抛出异常，其他都重试
+                if response.status_code == 404:
+                    return None
+                raise Exception(f"HTTP {response.status_code}")
             
             # 延迟以遵守速率限制
             time.sleep(config.REQUEST_DELAY)
             
             return response.text
             
-        except HTTPError as e:
-            if e.response.status_code == 403:
-                logger.error(f"访问被拒绝 (403): {url}")
-                logger.error("可能被反爬虫机制拦截，请检查 User-Agent 或增加延迟")
-            elif e.response.status_code == 404:
-                logger.warning(f"页面不存在 (404): {url}")
-            else:
-                logger.error(f"HTTP错误 ({e.response.status_code}): {url}")
-            raise
-            
-        except Timeout:
-            logger.error(f"请求超时: {url}")
-            raise
-            
-        except RequestException as e:
+        except Exception as e:
             logger.error(f"请求失败: {e}")
             raise
     
-    def fetch_statute_list(self) -> List[Dict[str, str]]:
+    def fetch_statute_list(self, index_url: str = None) -> List[Dict[str, str]]:
         """
-        获取法规列表
+        获取法规列表 (优先尝试 JSON API)
+        
+        Args:
+            index_url: 法规索引页面的URL (可选，默认使用配置中的URL)
         
         Returns:
             List[Dict]: 法规列表
         """
-        logger.info(f"正在获取法规列表: {config.INDEX_URL}")
+        target_url = index_url if index_url else getattr(config, 'INDEX_URL', None)
+        if not target_url and config.targets:
+             target_url = config.targets[0]['url']
         
+        if not target_url:
+             logger.error("未指定目标 URL")
+             return []
+
+        logger.info(f"正在获取法规列表: {target_url}")
+        
+        # 1. 尝试 JSON API (/items)
         try:
-            html_content = self._fetch_page(config.INDEX_URL)
+            # 移除末尾斜杠并添加 /items
+            api_url = target_url.rstrip('/') + '/items'
+            logger.info(f"尝试 JSON API: {api_url}")
+            
+            # 更新 Headers 为 same-origin
+            headers = self.session.headers.copy()
+            headers["Referer"] = "https://www.canlii.org/"
+            headers["Sec-Fetch-Site"] = "same-origin"
+            
+            response = self.session.get(
+                api_url, 
+                impersonate="chrome124",
+                headers=headers,
+                timeout=config.TIMEOUT
+            )
+            
+            if response.status_code == 200:
+                logger.info("JSON API 获取成功")
+                try:
+                    json_data = response.json()
+                    return self.parser.parse_statute_list_json(json_data)
+                except Exception as e:
+                    logger.error(f"JSON 解析失败: {e}")
+            else:
+                logger.warning(f"JSON API 请求失败: {response.status_code}")
+                
+        except Exception as e:
+            logger.warning(f"JSON API 尝试失败: {e}")
+
+        # 2. 只有在 JSON 失败时才回退到 HTML
+        logger.info("回退到 HTML 解析模式...")
+        try:
+            html_content = self._fetch_page(target_url)
             if not html_content:
-                logger.error("获取法规列表失败")
+                logger.error("获取法规列表失败 (HTML)")
                 return []
             
             statutes = self.parser.parse_statute_list(html_content)
+            
             logger.info(f"成功获取 {len(statutes)} 个法规")
             
             return statutes
@@ -113,22 +207,27 @@ class CanLIIScraper:
             logger.error(f"获取法规列表时出错: {e}")
             return []
     
-    def scrape_statute(self, statute_info: Dict[str, str]) -> bool:
+    def scrape_statute(self, statute_info: Dict[str, str], context: Optional[Dict] = None) -> bool:
         """
         爬取单个法规
         
         Args:
-            statute_info: 法规信息，包含 url, title, citation
+            statute_info: 法规信息，包含 url, title, citation, is_active
+            context: 抓取上下文，包含 jurisdiction_code, category, target_id
             
         Returns:
             bool: 是否成功
         """
         url = statute_info['url']
         title = statute_info['title']
+        context = context or {}
+        
+        # 即使断点记录显示已爬取，我们也同步一下状态（因为列表页就能拿到状态，且速度很快）
+        self.db_client.update_document_status(url, statute_info.get('is_active', True))
         
         # 检查是否已爬取
         if self.checkpoint and self.checkpoint.is_scraped(url):
-            logger.info(f"跳过已爬取的法规: {title}")
+            logger.info(f"跳过已爬取的法规内容: {title}")
             self.stats['skipped'] += 1
             return True
         
@@ -149,8 +248,15 @@ class CanLIIScraper:
                 self.stats['failed'] += 1
                 return False
             
-            # 保存到数据库
-            success = self.db_client.upsert_statute(statute_data)
+            # 合并上下文
+            save_data = {
+                **statute_data, 
+                **context,
+                "is_active": statute_info.get('is_active', True)
+            }
+            
+            # 保存到数据库 (使用 v3 架构)
+            success = self.db_client.upsert_document_v3(save_data)
             
             if success:
                 self.stats['success'] += 1
@@ -169,16 +275,19 @@ class CanLIIScraper:
             self.stats['failed'] += 1
             return False
     
-    def run(self, limit: Optional[int] = None, only_active: bool = True):
+    def run(self, limit: Optional[int] = None, only_active: bool = False, target_url: Optional[str] = None, context: Optional[Dict] = None, stop_event: Optional[threading.Event] = None):
         """
         运行爬虫
         
         Args:
             limit: 限制爬取数量（用于测试）
-            only_active: 是否只爬取有效的法规（排除已废除的）
+            only_active: 是否只爬取有效的法规（如果为False，则会爬取并标记已废除的法规）
+            target_url: 指定爬取的目标URL，如果为None则使用默认配置
+            context: 抓取上下文，用于保存到 v3 数据库
+            stop_event: 停止信号
         """
         logger.info("=" * 60)
-        logger.info("CanLII Alberta 法规爬虫启动")
+        logger.info("CanLII 法规爬虫启动")
         logger.info("=" * 60)
         
         # 测试数据库连接
@@ -187,7 +296,23 @@ class CanLIIScraper:
             return
         
         # 获取法规列表
-        statutes = self.fetch_statute_list()
+        # 如果指定了 target_url，则使用它，否则使用 config 中的默认值 (如果存在)
+        # 注意: config.INDEX_URL 可能在后续被移除，建议总是传入 target_url
+        url_to_use = target_url  
+        if not url_to_use:
+             # Backward compatibility
+             url_to_use = getattr(config, 'INDEX_URL', None)
+             
+        if not url_to_use and config.targets:
+             # Fallback to first target
+             url_to_use = config.targets[0]['url']
+             logger.info(f"使用默认目标: {config.targets[0]['name']}")
+
+        if not url_to_use:
+             logger.error("未指定目标 URL")
+             return
+
+        statutes = self.fetch_statute_list(index_url=url_to_use)
         if not statutes:
             logger.error("未获取到法规列表，程序终止")
             return
@@ -197,10 +322,8 @@ class CanLIIScraper:
             statutes = [s for s in statutes if s.get('is_active', True)]
             logger.info(f"过滤后剩余 {len(statutes)} 个有效法规")
         
-        # 限制数量
-        if limit:
-            statutes = statutes[:limit]
-            logger.info(f"限制爬取数量为 {limit}")
+        # statutes = statutes[:limit]  <-- REMOVED: Limit by actual scrapes, not list size
+        # logger.info(f"限制爬取数量为 {limit}")
         
         self.stats['total'] = len(statutes)
         
@@ -213,9 +336,28 @@ class CanLIIScraper:
         # 爬取每个法规
         logger.info(f"开始爬取 {len(statutes)} 个法规...")
         
+        newly_scraped_count = 0
         for i, statute in enumerate(statutes, 1):
+            if stop_event and stop_event.is_set():
+                logger.info("检测到停止信号，正在中断采集...")
+                break
+                
+            # Check if we reached the user-defined limit for NEW items
+            if limit and newly_scraped_count >= limit:
+                logger.info(f"已达到预设的抓取限制 ({limit} 条新数据)，自动停止。")
+                break
+                
             logger.info(f"\n进度: [{i}/{len(statutes)}]")
-            self.scrape_statute(statute)
+            
+            # We need to know if it was skipped or scraped
+            url = statute['url']
+            is_already_scraped = self.checkpoint and self.checkpoint.is_scraped(url)
+            
+            self.scrape_statute(statute, context=context)
+            
+            # If it wasn't skipped, it counts as a 'scrape' action
+            if not is_already_scraped:
+                newly_scraped_count += 1
         
         # 显示统计信息
         self._print_stats()
