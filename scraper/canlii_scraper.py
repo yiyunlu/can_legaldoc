@@ -8,6 +8,7 @@ from typing import List, Dict, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from requests.exceptions import RequestException, Timeout, HTTPError # curl_cffi raises compatible exceptions or its own
 import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from utils.config import config
 from utils.logger import logger
@@ -263,7 +264,7 @@ class CanLIIScraper:
                 # 记录到断点
                 if self.checkpoint:
                     self.checkpoint.add(url)
-                    self.checkpoint.save()
+                    # self.checkpoint.save() # SQLite 自动提交
                 return True
             else:
                 self.stats['failed'] += 1
@@ -327,37 +328,64 @@ class CanLIIScraper:
         
         self.stats['total'] = len(statutes)
         
-        # 显示进度
-        if self.checkpoint:
-            progress = self.checkpoint.get_progress(len(statutes))
-            logger.info(f"进度: {progress['scraped']}/{progress['total']} "
-                       f"({progress['percentage']:.1f}%)")
+        # 1. 高性能批量过滤 (Pre-filtering)
+        logger.info("正在执行高性能本地去重扫描...")
+        statute_urls = [s['url'] for s in statutes]
+        scraped_urls = self.checkpoint.filter_scraped_urls(statute_urls) if self.checkpoint else set()
         
-        # 爬取每个法规
-        logger.info(f"开始爬取 {len(statutes)} 个法规...")
+        # 将列表分为：待爬取 和 已爬取
+        to_scrape = []
+        for s in statutes:
+            if s['url'] in scraped_urls:
+                self.stats['skipped'] += 1
+            else:
+                to_scrape.append(s)
         
-        newly_scraped_count = 0
-        for i, statute in enumerate(statutes, 1):
-            if stop_event and stop_event.is_set():
-                logger.info("检测到停止信号，正在中断采集...")
-                break
+        if self.stats['skipped'] > 0:
+            logger.info(f"✨ 瞬时跳过: 发现 {self.stats['skipped']} 个已抓取的 URL，已直接从任务中剔除。")
+        
+        # 2. 检查用户设置的数量限制
+        if limit and len(to_scrape) > limit:
+            logger.info(f"根据用户设置的限制 (Limit: {limit})，仅抓取前 {limit} 条新法规。")
+            to_scrape = to_scrape[:limit]
+            
+        if not to_scrape:
+            logger.info("所有法规均已爬取或无新增内容。")
+            self._print_stats()
+            return
+
+        # 3. 多线程抓取 (Concurrency)
+        # 默认使用 3 个并发，既能提速又不会因压力过大触发 403
+        max_workers = 3 
+        logger.info(f"🚀 启动并发采集引擎 (Threads: {max_workers})...")
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # 提交所有任务
+            futures = []
+            for i, statute in enumerate(to_scrape, 1):
+                if stop_event and stop_event.is_set():
+                    break
                 
-            # Check if we reached the user-defined limit for NEW items
-            if limit and newly_scraped_count >= limit:
-                logger.info(f"已达到预设的抓取限制 ({limit} 条新数据)，自动停止。")
-                break
+                # 提交任务
+                future = executor.submit(self.scrape_statute, statute, context)
+                futures.append(future)
+            
+            # 等待完成并监控停止信号
+            for i, future in enumerate(futures, 1):
+                if stop_event and stop_event.is_set():
+                    logger.info("检测到停止信号，正在取消剩余任务...")
+                    # 尝试停止还没开始的任务
+                    for f in futures[i:]:
+                        f.cancel()
+                    break
                 
-            logger.info(f"\n进度: [{i}/{len(statutes)}]")
-            
-            # We need to know if it was skipped or scraped
-            url = statute['url']
-            is_already_scraped = self.checkpoint and self.checkpoint.is_scraped(url)
-            
-            self.scrape_statute(statute, context=context)
-            
-            # If it wasn't skipped, it counts as a 'scrape' action
-            if not is_already_scraped:
-                newly_scraped_count += 1
+                # 等待单个任务完成
+                try:
+                    future.result()
+                    if i % 5 == 0 or i == len(futures):
+                        logger.info(f"实时进度: [{i}/{len(to_scrape)}] (总进度: {self.stats['success'] + self.stats['failed'] + self.stats['skipped']}/{self.stats['total']})")
+                except Exception as e:
+                    logger.error(f"任务执行失败: {e}")
         
         # 显示统计信息
         self._print_stats()

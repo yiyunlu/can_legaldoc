@@ -3,6 +3,7 @@
 绕过反爬虫机制
 """
 import os
+import subprocess
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 import threading
 import time
@@ -128,28 +129,55 @@ class CanLIIPlaywrightScraper:
         return False
 
     def _handle_captcha(self, page):
-        """处理验证码逻辑"""
+        """
+        处理验证码逻辑
+        增加声音提醒和 15 秒人工干预倒计时
+        """
         if self.headless:
             logger.error("在无头模式下检测到验证码，无法自动通过。请切换到可视化模式并手动操作。")
             raise Exception("CAPTCHA_DETECTED")
         
-        logger.info("=" * 40)
-        logger.info("检测到验证码！请在浏览器窗口手动完成验证。")
-        logger.info("程序将等待您完成操作...")
-        logger.info("=" * 40)
+        # 1. 声音报警 (macOS 特定指令)
+        try:
+            logger.info("🔊 正在播放验证码报警音...")
+            subprocess.Popen(["afplay", "/System/Library/Sounds/Glass.aiff"])
+        except Exception as se:
+            logger.warning(f"无法播放报警音: {se}")
+
+        logger.info("=" * 60)
+        logger.info("🚨 检测到验证码！请在浏览器窗口手动完成验证。")
+        logger.info("⏳ 您有 15 秒的时间进行干预，超时将自动停止任务。")
+        logger.info("=" * 60)
         
-        # 循环检查，直到验证码页面消失
-        while self._check_captcha(page):
-            # 增加对停止信号的检查 (Add stop signal check)
+        # 2. 15 秒倒计时循环
+        timeout_seconds = 15
+        start_time = time.time()
+        
+        while True:
+            elapsed = int(time.time() - start_time)
+            remaining = timeout_seconds - elapsed
+            
+            # 检查验证码是否消失
+            if not self._check_captcha(page):
+                logger.info("✅ 验证码疑似已手动通过，程序继续运行！")
+                return # 成功，退出处理函数
+            
+            # 检查是否超时
+            if remaining <= 0:
+                logger.error("❌ 验证码人工干预超时 (15秒)，任务自动停止。")
+                raise Exception("CAPTCHA_TIMEOUT")
+            
+            # 检查停止信号
             if hasattr(self, 'stop_event') and self.stop_event and self.stop_event.is_set():
                 logger.info("验证码等待期间检测到停止信号，中断等待。")
                 raise Exception("STOP_REQUESTED")
-                
-            time.sleep(2)
-            # 用户可能已经手动通过了，或者页面跳转了
-            if not self._check_captcha(page):
-                logger.info("验证码疑似已手动通过，继续任务...")
-                break
+            
+            # 每隔 1 秒打印一次倒计时 (每 5 秒或最后 5 秒)
+            if remaining > 0:
+                if remaining <= 5 or remaining % 5 == 0:
+                    logger.info(f"等待人工干预中... 剩余 {remaining} 秒")
+                    
+            time.sleep(1)
         
     def _fetch_page(self, url: str, wait_selector: str = None) -> Optional[str]:
         """使用现有的上下文获取网页内容"""
@@ -189,7 +217,7 @@ class CanLIIPlaywrightScraper:
             content = page.content()
             return content
         except Exception as e:
-            if "CAPTCHA_DETECTED" in str(e) or "STOP_REQUESTED" in str(e):
+            if "CAPTCHA" in str(e) or "STOP_REQUESTED" in str(e):
                 raise
             logger.error(f"获取页面失败: {e}")
             return None
@@ -363,47 +391,55 @@ class CanLIIPlaywrightScraper:
             
             self.stats['total'] = len(statutes)
             
-            # 显示进度
-            if self.checkpoint:
-                progress = self.checkpoint.get_progress(len(statutes))
-                logger.info(f"进度: {progress['scraped']}/{progress['total']} "
-                           f"({progress['percentage']:.1f}%)")
+            # 1. 高性能批量过滤 (Pre-filtering)
+            logger.info("[Deep Engine] 正在执行高性能本地去重扫描...")
+            statute_urls = [s['url'] for s in statutes]
+            scraped_urls = self.checkpoint.filter_scraped_urls(statute_urls) if self.checkpoint else set()
             
-            # 爬取每个法规
-            logger.info(f"开始爬取 {len(statutes)} 个法规...")
+            # 将列表分为：待爬取 和 已爬取
+            to_scrape = []
+            for s in statutes:
+                if s['url'] in scraped_urls:
+                    self.stats['skipped'] += 1
+                else:
+                    to_scrape.append(s)
             
-            newly_scraped_count = 0
-            for i, statute in enumerate(statutes, 1):
+            if self.stats['skipped'] > 0:
+                logger.info(f"✨ [Deep Engine] 瞬时跳过: 发现 {self.stats['skipped']} 个已抓取的 URL。")
+                
+            # 2. 检查用户设置的数量限制
+            if limit and len(to_scrape) > limit:
+                logger.info(f"根据用户设置的限制 (Limit: {limit})，仅抓取前 {limit} 条新法规。")
+                to_scrape = to_scrape[:limit]
+                
+            if not to_scrape:
+                logger.info("所有法规均已爬取或无新增内容。")
+                self._print_stats()
+                return
+                
+            # 3. 串行抓取 (保持稳定性)
+            logger.info(f"开始爬取 {len(to_scrape)} 个新法规...")
+            
+            for i, statute in enumerate(to_scrape, 1):
                 if stop_event and stop_event.is_set():
                     logger.info("检测到停止信号，正在中断采集...")
                     break
-                
-                # Check if we reached the user-defined limit for NEW items
-                if limit and newly_scraped_count >= limit:
-                    logger.info(f"已达到预设的抓取限制 ({limit} 条新数据)，自动停止。")
-                    break
                     
-                logger.info(f"\n进度: [{i}/{len(statutes)}]")
-                
-                # We need to know if it was skipped or scraped
-                url = statute['url']
-                is_already_scraped = self.checkpoint and self.checkpoint.is_scraped(url)
+                logger.info(f"进度: [{i}/{len(to_scrape)}] (总进度: {self.stats['success'] + self.stats['failed'] + self.stats['skipped']}/{self.stats['total']})")
                 
                 try:
                     self.scrape_statute(statute, context=context)
-                    
-                    # If it wasn't skipped, it counts as a 'scrape' action (success or failure)
-                    if not is_already_scraped:
-                        newly_scraped_count += 1
-                        
                 except Exception as e:
+                    if "CAPTCHA_TIMEOUT" in str(e):
+                        logger.error("❌ 验证码人工干预超时，任务全量停止。")
+                        break
                     if "CAPTCHA_DETECTED" in str(e):
                         logger.error("检测到验证码拦截，任务终止。请切换模式或手动处理后重试。")
-                        break # 停止整个爬取循环
+                        break 
                     if "STOP_REQUESTED" in str(e):
                         logger.info("由于停止请求，任务已提前终止。")
                         break
-                    raise # 重新抛出其他异常
+                    raise 
             
             # 显示统计信息
             self._print_stats()

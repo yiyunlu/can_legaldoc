@@ -154,16 +154,16 @@ class SupabaseClient:
     
     def get_all_statutes(self) -> list:
         """
-        获取所有法规
+        获取所有文档 (v3)
         
         Returns:
-            list: 法规列表
+            list: 文档列表
         """
         try:
-            response = self.client.table('ab_statutes').select('*').execute()
+            response = self.client.table('documents').select('*').execute()
             return response.data if response.data else []
         except Exception as e:
-            logger.error(f"获取所有法规失败: {e}")
+            logger.error(f"获取所有文档失败: {e}")
             return []
     
     def get_statute_count(self) -> int:

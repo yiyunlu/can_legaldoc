@@ -34,3 +34,10 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Browser profiles and caches
+.browser_profile/
+.test_profile/
+checkpoint.db
+discovery_cache.json
+sample_pages/

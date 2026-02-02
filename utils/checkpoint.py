@@ -95,7 +95,7 @@ class Checkpoint:
     
     def is_scraped(self, url: str) -> bool:
         """
-        检查URL是否已爬取
+        检查URL是否已爬取 (单条查询)
         
         Args:
             url: 法规URL
@@ -109,6 +109,47 @@ class Checkpoint:
         except Exception as e:
             logger.error(f"查询断点失败: {url}, Error: {e}")
             return False
+
+    def filter_scraped_urls(self, urls: list) -> set:
+        """
+        批量检查哪些 URL 已经爬取过
+        
+        Args:
+            urls: 待检查的 URL 列表
+            
+        Returns:
+            set: 已经爬取过的 URL 集合
+        """
+        if not urls:
+            return set()
+            
+        scraped_set = set()
+        # SQLite 对 IN 子句中的变量数量有限制 (通常是 999)
+        # 我们采用分批查询策略
+        chunk_size = 500
+        for i in range(0, len(urls), chunk_size):
+            chunk = urls[i:i + chunk_size]
+            placeholders = ','.join(['?'] * len(chunk))
+            try:
+                cursor = self.conn.execute(
+                    f"SELECT url FROM checkpoints WHERE url IN ({placeholders})", 
+                    chunk
+                )
+                rows = cursor.fetchall()
+                for row in rows:
+                    scraped_set.add(row[0])
+            except Exception as e:
+                logger.error(f"批量查询断点失败: {e}")
+                
+        return scraped_set
+
+    def get_scraped_count(self) -> int:
+        """快速获取已爬取的总数"""
+        try:
+            cursor = self.conn.execute("SELECT count(*) FROM checkpoints")
+            return cursor.fetchone()[0]
+        except:
+            return 0
     
     def reset(self):
         """重置断点"""

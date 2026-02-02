@@ -7,7 +7,7 @@ function Configuration() {
     const [newTarget, setNewTarget] = useState({
         name: '',
         province: '',
-        type: 'statutes',
+        type: 'Statutes',
         url: ''
     });
 
@@ -34,7 +34,7 @@ function Configuration() {
         try {
             await api.updateConfig(updated);
             setTargets(updated);
-            setNewTarget({ name: '', province: '', type: 'statutes', url: '' });
+            setNewTarget({ name: '', province: '', type: 'Statutes', url: '' });
         } catch (err) {
             alert("Failed to save config");
         }
@@ -69,8 +69,10 @@ function Configuration() {
                     <div>
                         <label style={{ display: 'block', fontSize: '11px' }}>Type</label>
                         <select className="input" value={newTarget.type} onChange={e => setNewTarget({ ...newTarget, type: e.target.value })}>
-                            <option value="statutes">Statutes</option>
-                            <option value="regulations">Regulations</option>
+                            <option value="Statutes">Statutes</option>
+                            <option value="Regulations">Regulations</option>
+                            <option value="Courts">Courts</option>
+                            <option value="Boards and Tribunals">Boards and Tribunals</option>
                         </select>
                     </div>
                     <div style={{ flexGrow: 1 }}>

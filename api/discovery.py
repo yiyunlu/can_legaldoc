@@ -118,14 +118,21 @@ class DiscoveryEngine:
                     target = None
                     
                     if db['category'] == 'Legislation':
-                        # Fetch item count for statutes/regs
+                        # Distinguish Statutes vs Regulations
+                        sub_cat = "Statutes"
+                        if '/regu' in db['url']:
+                            sub_cat = "Regulations"
+                        elif '/stat' in db['url'] or '/astat' in db['url']:
+                            sub_cat = "Statutes"
+                        
+                        # Fetch item count
                         exists, count = self._check_target_details(db['url'], db['category'])
                         if exists:
                             target = {
                                 "name": db['name'],
                                 "province": jur['code'],
                                 "province_name": jur['name'],
-                                "type": db['category'],
+                                "type": sub_cat,
                                 "type_name": db['name'],
                                 "url": db['url'],
                                 "status": "Available",
@@ -224,6 +231,7 @@ class DiscoveryEngine:
                         # Map French to English
                         if 'Législation' in current_category: current_category = 'Legislation'
                         if 'Tribunaux' in current_category: current_category = 'Courts'
+                        if 'Boards' in current_category or 'Tribunals' in current_category: current_category = 'Boards and Tribunals'
                 
                 if element.name == 'a' and element.get('href'):
                     href = element.get('href')

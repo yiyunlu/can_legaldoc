@@ -7,6 +7,12 @@ function Discovery() {
     const [progress, setProgress] = useState({ message: '', percent: 0 });
     const [error, setError] = useState(null);
     const [existingTargets, setExistingTargets] = useState([]);
+    const [filters, setFilters] = useState({
+        Statutes: true,
+        Regulations: true,
+        Courts: true,
+        'Boards and Tribunals': true
+    });
 
     useEffect(() => {
         loadConfig();
@@ -100,6 +106,19 @@ function Discovery() {
     // Helper to check existence
     const isExisting = (url) => existingTargets.some(t => t.url === url);
 
+    // Apply filters to results
+    const filteredResults = results.filter(item => {
+        const type = item.type;
+        if (filters[type] !== undefined) {
+            return filters[type];
+        }
+        return true; // Keep others by default
+    });
+
+    const toggleFilter = (cat) => {
+        setFilters(prev => ({ ...prev, [cat]: !prev[cat] }));
+    };
+
     return (
         <div>
             <div style={{ marginBottom: '15px' }}>
@@ -130,12 +149,38 @@ function Discovery() {
                     )}
                 </div>
                 {error && <div style={{ color: 'var(--error)', marginTop: '5px' }}>{error}</div>}
+
+                <div style={{
+                    display: 'flex',
+                    gap: '20px',
+                    fontSize: '0.85em',
+                    background: 'var(--bg-subtle)',
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-subtle)',
+                    marginTop: '10px'
+                }}>
+                    <span style={{ fontWeight: 'bold', color: 'var(--text-secondary)' }}>Filters:</span>
+                    {Object.keys(filters).map(cat => (
+                        <label key={cat} style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+                            <input
+                                type="checkbox"
+                                checked={filters[cat]}
+                                onChange={() => toggleFilter(cat)}
+                            />
+                            {cat}
+                        </label>
+                    ))}
+                    <span style={{ marginLeft: 'auto', color: 'var(--text-secondary)' }}>
+                        Showing {filteredResults.length} / {results.length}
+                    </span>
+                </div>
             </div>
 
-            {results.length > 0 && (
+            {filteredResults.length > 0 && (
                 <div>
-                    <h3 style={{ margin: '0 0 10px 0', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px' }}>
-                        Discovered items ({results.length})
+                    <h3 style={{ margin: '15px 0 10px 0', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px' }}>
+                        Discovered items
                     </h3>
                     <div style={{ overflowX: 'auto' }}>
                         <table className="dense-table" style={{ width: '100%' }}>
@@ -149,7 +194,7 @@ function Discovery() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {results.map((item, idx) => {
+                                {filteredResults.map((item, idx) => {
                                     const exists = isExisting(item.url);
                                     return (
                                         <tr key={idx}>

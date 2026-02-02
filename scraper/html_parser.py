@@ -91,9 +91,9 @@ class HTMLParser:
                     tds = row.find_all('td')
                     citation = tds[0].get_text(strip=True) if tds else ''
                     
-                    # 更加鲁棒的链接匹配：匹配 /ca/laws/stat/, /en/ab/laws/regu/, /fr/ca/laws/const/ 等
-                    # 不再强制要求 class='canlii'，因为部分页面结构可能不同
-                    link = row.find('a', href=re.compile(r'(/[a-z]{2})?/[a-z]{2}/laws/(stat|regu|const)/'))
+                    # 更加鲁棒的链接匹配：匹配 /ca/laws/stat/, /en/ab/laws/astat/, /en/ab/laws/regu/ 等
+                    # 包含 astat (Annual Statutes) 和 aregu (Annual Regulations)
+                    link = row.find('a', href=re.compile(r'(/[a-z]{2})?/[a-z]{2}/laws/(stat|astat|regu|aregu|const)/'))
                     
                     if link:
                         title = link.get_text(strip=True)
@@ -214,8 +214,8 @@ class HTMLParser:
             str: 引文
         """
         # 尝试从URL提取
-        # URL格式: .../stat/rsa-2000-c-a-1/latest/... 或 .../const/30---31-vict-c-3/...
-        match = re.search(r'/(stat|regu|const)/([^/]+)/', url)
+        # URL格式: .../stat/rsa-2000-c-a-1/latest/... 或 .../astat/sa-2023-c-1/latest/...
+        match = re.search(r'/(stat|astat|regu|aregu|const)/([^/]+)/', url)
         if match:
             statute_id = match.group(2)
             # 转换为标准引文格式

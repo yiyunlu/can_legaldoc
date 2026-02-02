@@ -17,6 +17,12 @@
       "type": "Legislation",
       "url": "https://www.canlii.org/ab/laws/astat",
       "name": "Annual Statutes"
+    },
+    {
+      "province": "ca",
+      "type": "Legislation",
+      "url": "https://www.canlii.org/ca/laws/stat",
+      "name": "Consolidated Statutes"
     }
   ]
 }
