@@ -41,3 +41,6 @@ htmlcov/
 checkpoint.db
 discovery_cache.json
 sample_pages/
+
+# Local data (cloned repos, downloaded datasets)
+data/
