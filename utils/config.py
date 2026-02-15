@@ -50,11 +50,40 @@ class Config:
         'Chrome/120.0.0.0 Safari/537.36'
     )
     
+    # Default sources for multi-source architecture
+    DEFAULT_SOURCES = [
+        {
+            "source_type": "justice_canada_xml",
+            "name": "Federal Legislation (XML)",
+            "jurisdiction": "ca",
+            "category": "Legislation",
+            "enabled": True,
+            "params": {}
+        },
+        {
+            "source_type": "bc_laws_api",
+            "name": "BC Legislation (CiviX API)",
+            "jurisdiction": "bc",
+            "category": "Legislation",
+            "enabled": True,
+            "params": {}
+        },
+        {
+            "source_type": "a2aj_case_law",
+            "name": "A2AJ Case Law (Hugging Face)",
+            "jurisdiction": "multi",
+            "category": "Case Law",
+            "enabled": True,
+            "params": {"dataset_name": "a2aj/canadian-case-law", "streaming": True}
+        }
+    ]
+
     def __init__(self):
         self.targets = self.load_targets()
+        self.sources = self.load_sources()
 
     def load_targets(self) -> List[Dict]:
-        """从文件加载目标配置，如果不存在则使用默认值"""
+        """从文件加载目标配置，如果不存在则使用默认值 (legacy CanLII targets)"""
         if self.CONFIG_FILE.exists():
             try:
                 with open(self.CONFIG_FILE, 'r', encoding='utf-8') as f:
@@ -65,12 +94,36 @@ class Config:
                 return self.DEFAULT_TARGETS
         return self.DEFAULT_TARGETS
 
+    def load_sources(self) -> List[Dict]:
+        """加载多源配置 (new multi-source architecture)"""
+        if self.CONFIG_FILE.exists():
+            try:
+                with open(self.CONFIG_FILE, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    return data.get('sources', self.DEFAULT_SOURCES)
+            except Exception as e:
+                print(f"Error loading sources from config: {e}")
+                return self.DEFAULT_SOURCES
+        return self.DEFAULT_SOURCES
+
     def save_targets(self, targets: List[Dict]):
         """保存目标配置到文件"""
         self.targets = targets
+        self._save_config()
+
+    def save_sources(self, sources: List[Dict]):
+        """保存多源配置到文件"""
+        self.sources = sources
+        self._save_config()
+
+    def _save_config(self):
+        """Save both targets and sources to config.json"""
         try:
             with open(self.CONFIG_FILE, 'w', encoding='utf-8') as f:
-                json.dump({'targets': targets}, f, indent=2, ensure_ascii=False)
+                json.dump({
+                    'targets': self.targets,
+                    'sources': self.sources,
+                }, f, indent=2, ensure_ascii=False)
         except Exception as e:
             print(f"Error saving config file: {e}")
             raise e

@@ -24,5 +24,34 @@
       "url": "https://www.canlii.org/ca/laws/stat",
       "name": "Consolidated Statutes"
     }
+  ],
+  "sources": [
+    {
+      "source_type": "justice_canada_xml",
+      "name": "Federal Legislation (XML)",
+      "jurisdiction": "ca",
+      "category": "Legislation",
+      "enabled": true,
+      "params": {}
+    },
+    {
+      "source_type": "bc_laws_api",
+      "name": "BC Legislation (CiviX API)",
+      "jurisdiction": "bc",
+      "category": "Legislation",
+      "enabled": true,
+      "params": {}
+    },
+    {
+      "source_type": "a2aj_case_law",
+      "name": "A2AJ Case Law (Hugging Face)",
+      "jurisdiction": "multi",
+      "category": "Case Law",
+      "enabled": true,
+      "params": {
+        "dataset_name": "a2aj/canadian-case-law",
+        "streaming": true
+      }
+    }
   ]
 }

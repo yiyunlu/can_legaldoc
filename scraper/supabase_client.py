@@ -53,11 +53,30 @@ class SupabaseClient:
                 "metadata": doc_data.get('metadata', {}),
                 "updated_at": "now()"
             }
+            # v4 multi-source fields — added if columns exist in DB
+            v4_fields = {}
+            if doc_data.get('source_type'):
+                v4_fields['source_type'] = doc_data['source_type']
+            if doc_data.get('document_type'):
+                v4_fields['document_type'] = doc_data['document_type']
 
-            # 2. Upsert documents
-            doc_res = self.client.table('documents').upsert(
-                document_entry, on_conflict='source_url'
-            ).execute()
+            # 2. Upsert documents (try with v4 fields first, fallback without)
+            entry_with_v4 = {**document_entry, **v4_fields}
+            try:
+                doc_res = self.client.table('documents').upsert(
+                    entry_with_v4, on_conflict='source_url'
+                ).execute()
+            except Exception as v4_err:
+                if 'PGRST204' in str(v4_err) or 'column' in str(v4_err).lower():
+                    # v4 columns not yet added — retry without them
+                    if not hasattr(self, '_v4_warned'):
+                        logger.warning("v4 columns (source_type/document_type) not in DB yet, saving without them")
+                        self._v4_warned = True
+                    doc_res = self.client.table('documents').upsert(
+                        document_entry, on_conflict='source_url'
+                    ).execute()
+                else:
+                    raise
             
             if not doc_res.data:
                 logger.error(f"Documents 表 Upsert 失败: {source_url}")
