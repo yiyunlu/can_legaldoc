@@ -3,7 +3,7 @@ import './App.css';
 import { api } from './api';
 
 function App() {
-  const [activeTab, setActiveTab] = useState('dashboard'); // dashboard, config, discovery
+  const [activeTab, setActiveTab] = useState('sources'); // sources, dashboard, config, discovery
   const [status, setStatus] = useState(null);
 
   const fetchStatus = async () => {
@@ -54,7 +54,7 @@ function App() {
     <div className="app-container">
       {/* Sidebar - Controls & Navigation */}
       <div className="sidebar">
-        <h1 style={{ fontSize: '16px', margin: '0 0 10px 0' }}>CanLII Manager</h1>
+        <h1 style={{ fontSize: '14px', margin: '0 0 10px 0' }}>Canadian Legal Data Platform</h1>
 
         <div className="sidebar-section">
           <h2>Status</h2>
@@ -79,24 +79,27 @@ function App() {
         <div className="sidebar-section">
           <h2>Navigation</h2>
           <div className="filter-group">
+            <a href="#" className={`nav-link ${activeTab === 'sources' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('sources'); }}>Data Sources</a>
             <a href="#" className={`nav-link ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('dashboard'); }}>Overview</a>
             <a href="#" className={`nav-link ${activeTab === 'config' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('config'); }}>Configuration</a>
             <a href="#" className={`nav-link ${activeTab === 'discovery' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('discovery'); }}>Auto Discovery</a>
           </div>
         </div>
 
-        {/* Future Filters could go here */}
         <div className="sidebar-section">
-          <h2>Filters (Future)</h2>
-          <div className="filter-group">
-            <label><input type="checkbox" checked readOnly /> Statutes</label>
-            <label><input type="checkbox" checked readOnly /> Regulations</label>
+          <h2>Info</h2>
+          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+            {status?.current_source && (
+              <div style={{ marginBottom: '4px' }}>Source: {status.current_source}</div>
+            )}
+            <div>v4.0 Multi-Source</div>
           </div>
         </div>
       </div>
 
       {/* Main Content Area */}
       <div className="main-content">
+        {activeTab === 'sources' && <DataSourcesView status={status} />}
         {activeTab === 'dashboard' && (
           <DashboardView
             status={status}
@@ -317,15 +320,13 @@ function DashboardView({
   );
 }
 
-import ConfigViewComponent from './pages/Configuration'; // Reuse logic but might need style tweaks
-// Actually, let's just re-implement a dense version here to match the style perfectly
-// or wrap the existing standard logic if it allows custom styling. 
-// Given the radical style change, it's safer to rewrite the render part or adapt the css.
-// Adaptation via CSS (.table, .input classes) should work if we reused class names.
+import DataSourcesViewComponent from './pages/DataSources';
+function DataSourcesView({ status }) {
+  return <DataSourcesViewComponent status={status} />;
+}
 
+import ConfigViewComponent from './pages/Configuration';
 function ConfigView() {
-  // We can reuse the existing `pages/Configuration.jsx` if we updated its classNames or if it uses standard HTML elements we styled in App.css.
-  // Let's try importing it first, but we might need to strip the "Card" wrappers.
   return <ConfigViewComponent />;
 }
 

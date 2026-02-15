@@ -72,5 +72,39 @@ export const api = {
         const res = await fetch(`${API_BASE}/discovery/cache`);
         if (!res.ok) return { results: [] };
         return res.json();
+    },
+
+    // === Multi-Source API (v4) ===
+
+    async getSources() {
+        const res = await fetch(`${API_BASE}/sources`);
+        return res.json();
+    },
+
+    async getAvailableAdapters() {
+        const res = await fetch(`${API_BASE}/sources/available`);
+        return res.json();
+    },
+
+    async updateSources(sources) {
+        const res = await fetch(`${API_BASE}/sources`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sources })
+        });
+        return res.json();
+    },
+
+    async startMultiSource(payload) {
+        const res = await fetch(`${API_BASE}/scraper/start`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Failed to start');
+        }
+        return res.json();
     }
 };
