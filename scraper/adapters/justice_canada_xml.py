@@ -86,25 +86,17 @@ class JusticeCanadaXMLAdapter(BaseSourceAdapter):
     def _parse_xml_metadata(self, xml_path: Path) -> Optional[DocumentMetadata]:
         """Extract metadata from an XML file without full parsing."""
         try:
-            # Parse just enough to get the title
-            context = etree.iterparse(str(xml_path), events=('end',), tag='{*}LongTitle')
+            tree = etree.parse(str(xml_path))
+            root = tree.getroot()
+            ns_uri = root.nsmap.get(None, '')
+
             title = None
-            for _, elem in context:
-                title = ''.join(elem.itertext()).strip()
-                break
-
-            if not title:
-                # Fallback: try ShortTitle
-                tree = etree.parse(str(xml_path))
-                root = tree.getroot()
-                ns = {'lims': root.nsmap.get(None, '')}
-
-                for tag in ['ShortTitle', 'Title']:
-                    el = root.find(f'.//{{{ns["lims"]}}}{tag}') if ns['lims'] else root.find(f'.//{tag}')
-                    if el is not None:
-                        title = ''.join(el.itertext()).strip()
-                        if title:
-                            break
+            for tag in ['LongTitle', 'ShortTitle', 'Title']:
+                el = root.find(f'.//{{{ns_uri}}}{tag}') if ns_uri else root.find(f'.//{tag}')
+                if el is not None:
+                    title = ''.join(el.itertext()).strip()
+                    if title:
+                        break
 
             if not title:
                 title = xml_path.stem.replace('-', ' ').replace('_', ' ')

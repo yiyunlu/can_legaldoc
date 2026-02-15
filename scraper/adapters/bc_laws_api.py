@@ -40,6 +40,7 @@ class BCLawsAPIAdapter(BaseSourceAdapter):
             "Accept": "application/xml",
             "User-Agent": "CanadaLegalDataPlatform/1.0",
         })
+        self._doc_id_cache = {}  # dir_id -> real_doc_id
 
     def get_source_name(self) -> str:
         return "BC Laws API (CiviX)"
@@ -159,7 +160,13 @@ class BCLawsAPIAdapter(BaseSourceAdapter):
         The CiviX directory uses directory IDs (e.g. '96001') but the actual
         document has a different ID (e.g. '96001_01' or '21033'). We fetch the
         statute directory listing to find the first <document> child.
+
+        Results are cached to avoid redundant HTTP requests.
         """
+        if dir_id in self._doc_id_cache:
+            return self._doc_id_cache[dir_id]
+
+        real_id = None
         try:
             stat_url = f"{self.base_api}/content/complete/statreg/{letter_dir_id}/{dir_id}/"
             resp = self.session.get(stat_url, timeout=config.TIMEOUT)
@@ -170,12 +177,15 @@ class BCLawsAPIAdapter(BaseSourceAdapter):
                 if self._local_tag(child) == 'document':
                     real_id = self._get_child_text(child, 'CIVIX_DOCUMENT_ID')
                     if real_id:
-                        return real_id
+                        break
         except Exception as e:
             logger.debug(f"Failed to resolve document ID for {dir_id}: {e}")
 
-        # Fallback: common convention {dir_id}_01
-        return f"{dir_id}_01"
+        if not real_id:
+            real_id = f"{dir_id}_01"
+
+        self._doc_id_cache[dir_id] = real_id
+        return real_id
 
     def fetch_document(self, doc_meta: DocumentMetadata) -> Optional[DocumentContent]:
         """Fetch full XML content for a single BC statute/regulation."""

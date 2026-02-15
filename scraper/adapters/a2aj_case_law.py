@@ -157,16 +157,22 @@ class A2AJCaseLawAdapter(BaseSourceAdapter):
         """
         Discover available case law documents.
         In streaming mode, only reads up to `limit` records.
+
+        NOTE: Without a limit, this streams all 185K records. For full ingestion,
+        prefer using fetch_documents_batch() directly which avoids holding all
+        metadata in memory.
         """
         ds = self._load_dataset()
         docs = []
 
+        # Default cap to prevent OOM when no limit specified
+        effective_limit = limit if limit is not None else 185000
+
         try:
-            # Get the train split (or whichever split exists)
             split = ds.get('train') or ds.get('test') or next(iter(ds.values()))
 
-            for i, record in enumerate(split):
-                if limit and len(docs) >= limit:
+            for record in split:
+                if len(docs) >= effective_limit:
                     break
                 meta = self._record_to_metadata(record)
                 if meta.source_url:
