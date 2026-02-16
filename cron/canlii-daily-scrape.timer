@@ -1,0 +1,10 @@
+[Unit]
+Description=Run CanLII daily scrape at 2 AM
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+RandomizedDelaySec=900
+
+[Install]
+WantedBy=timers.target

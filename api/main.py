@@ -1,33 +1,51 @@
-from fastapi import FastAPI, HTTPException
+import os
+import json
+from pathlib import Path
+from fastapi import FastAPI, HTTPException, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-import json
+from fastapi.staticfiles import StaticFiles
+from starlette.responses import FileResponse
+
 from api.models import ConfigUpdateRequest, ScraperStatus, ScraperStartRequest, SourcesUpdateRequest
 from api.manager import scraper_manager
 from utils.config import config
 
 app = FastAPI(title="Canadian Legal Data Platform API")
 
-# Allow CORS for frontend
+# ---------- CORS ----------
+allowed_origin = os.getenv("ALLOWED_ORIGIN", "*")
+origins = ["*"] if allowed_origin == "*" else [o.strip() for o in allowed_origin.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@app.get("/")
-def read_root():
-    return {"status": "ok", "service": "Canadian Legal Data Platform API", "version": "4.0"}
+# ---------- Root health check (outside /api, for monitoring & Cloudflare) ----------
 
-# ========== Config (legacy targets) ==========
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "service": "Canadian Legal Data Platform", "version": "5.0"}
 
-@app.get("/config")
+
+# ========================================================================
+#  API Router — all business endpoints live under /api prefix
+# ========================================================================
+
+api_router = APIRouter(prefix="/api")
+
+
+# ---- Config (legacy targets) ----
+
+@api_router.get("/config")
 def get_config():
     return {"targets": config.targets}
 
-@app.post("/config")
+@api_router.post("/config")
 def update_config(request: ConfigUpdateRequest):
     try:
         targets_data = [t.dict() for t in request.targets]
@@ -36,14 +54,15 @@ def update_config(request: ConfigUpdateRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ========== Sources (multi-source config) ==========
 
-@app.get("/sources")
+# ---- Sources (multi-source config) ----
+
+@api_router.get("/sources")
 def get_sources():
     """Get all configured data sources."""
     return {"sources": config.sources}
 
-@app.post("/sources")
+@api_router.post("/sources")
 def update_sources(request: SourcesUpdateRequest):
     """Update data source configuration."""
     try:
@@ -53,7 +72,7 @@ def update_sources(request: SourcesUpdateRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/sources/available")
+@api_router.get("/sources/available")
 def list_available_adapters():
     """List all registered adapter types."""
     from scraper.adapters import list_adapters
@@ -65,7 +84,7 @@ def list_available_adapters():
         ]
     }
 
-@app.get("/sources/stats")
+@api_router.get("/sources/stats")
 def get_source_stats():
     """Get per-source document counts and DB statistics."""
     from scraper.supabase_client import SupabaseClient
@@ -112,13 +131,14 @@ def get_source_stats():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ========== Scraper Control ==========
 
-@app.get("/status", response_model=ScraperStatus)
+# ---- Scraper Control ----
+
+@api_router.get("/status", response_model=ScraperStatus)
 def get_status():
     return scraper_manager.get_status()
 
-@app.post("/scraper/start")
+@api_router.post("/scraper/start")
 def start_scraper(req: ScraperStartRequest):
     success, msg = scraper_manager.start_scraping(
         engine=req.engine,
@@ -132,16 +152,17 @@ def start_scraper(req: ScraperStartRequest):
         raise HTTPException(status_code=400, detail=msg)
     return {"message": msg}
 
-@app.post("/scraper/stop")
+@api_router.post("/scraper/stop")
 def stop_scraper():
     success, msg = scraper_manager.stop_scraping()
     if not success:
         raise HTTPException(status_code=400, detail=msg)
     return {"status": "stopping", "message": msg}
 
-# ========== Discovery (legacy CanLII) ==========
 
-@app.get("/discovery/explore")
+# ---- Discovery (legacy CanLII) ----
+
+@api_router.get("/discovery/explore")
 def explore_targets():
     """Trigger a discovery scan with streaming progress"""
     from api.discovery import discovery_engine
@@ -152,8 +173,29 @@ def explore_targets():
 
     return StreamingResponse(event_generator(), media_type="application/x-ndjson")
 
-@app.get("/discovery/cache")
+@api_router.get("/discovery/cache")
 def get_discovery_cache():
     """Get cached discovery results"""
     from api.discovery import discovery_engine
     return {"results": discovery_engine.get_cached_results()}
+
+
+# ========================================================================
+#  Register API router, then mount static frontend (order matters!)
+# ========================================================================
+
+app.include_router(api_router)
+
+# Serve built React frontend in production (when web/dist/ exists)
+_dist = Path(__file__).parent.parent / "web" / "dist"
+if _dist.exists():
+    # Vite puts hashed JS/CSS bundles in /assets/
+    app.mount("/assets", StaticFiles(directory=str(_dist / "assets")), name="assets")
+
+    # SPA catch-all: any route not matched by /api/* or /assets/* returns index.html
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        file_path = _dist / full_path
+        if file_path.is_file():
+            return FileResponse(str(file_path))
+        return FileResponse(str(_dist / "index.html"))

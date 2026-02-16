@@ -1,0 +1,37 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTALL_PLAYWRIGHT: "true"    # set "false" to skip Chromium (~800MB smaller)
+    container_name: canlii-platform
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+    volumes:
+      - ./checkpoint.db:/app/checkpoint.db
+      - ./data:/app/data
+      - ./config.json:/app/config.json
+    networks:
+      - canlii-net
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: canlii-tunnel
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    networks:
+      - canlii-net
+    depends_on:
+      - app
+
+networks:
+  canlii-net:
+    driver: bridge
