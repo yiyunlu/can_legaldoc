@@ -1,97 +1,160 @@
-import React, { useEffect, useState } from 'react';
-import { api } from '../api';
+import React from 'react';
 
-function Dashboard() {
-    const [status, setStatus] = useState(null);
-    const [loading, setLoading] = useState(true);
+const JUR_NAMES = {
+  ca: 'Federal', bc: 'British Columbia', ab: 'Alberta', on: 'Ontario',
+  qc: 'Quebec', ns: 'Nova Scotia', nb: 'New Brunswick', mb: 'Manitoba',
+  pe: 'PEI', sk: 'Saskatchewan', nl: 'Newfoundland', yt: 'Yukon',
+  nt: 'NWT', nu: 'Nunavut',
+};
 
-    const fetchStatus = async () => {
-        try {
-            const data = await api.getStatus();
-            setStatus(data);
-        } catch (error) {
-            console.error("Failed to fetch status", error);
-        } finally {
-            setLoading(false);
-        }
-    };
+const JUR_COLORS = {
+  ca: '#4f6ef7', bc: '#34d399', ab: '#fbbf24', on: '#f87171',
+  qc: '#a78bfa', ns: '#fb923c', nb: '#60a5fa', mb: '#f472b6',
+};
 
-    useEffect(() => {
-        fetchStatus();
-        const interval = setInterval(fetchStatus, 2000); // Poll every 2s
-        return () => clearInterval(interval);
-    }, []);
+const SOURCE_META = {
+  justice_canada_xml: { label: 'XML',  badge: 'badge-xml', name: 'Federal Legislation' },
+  bc_laws_api:        { label: 'API',  badge: 'badge-api', name: 'BC Laws' },
+  a2aj_case_law:      { label: 'HF',   badge: 'badge-hf',  name: 'A2AJ Case Law' },
+  canlii_legacy:      { label: 'Web',  badge: 'badge-web', name: 'CanLII Legacy' },
+};
 
-    const handleStart = async () => {
-        try {
-            await api.startScraper();
-            fetchStatus();
-        } catch (e) {
-            alert("Error starting scraper: " + e.message);
-        }
-    };
+export default function Dashboard({ status, stats }) {
+  if (!stats) return <div style={{ padding: 20, color: 'var(--text-muted)' }}>Loading dashboard...</div>;
 
-    const handleStop = async () => {
-        try {
-            await api.stopScraper();
-            fetchStatus();
-        } catch (e) {
-            alert("Error stopping scraper: " + e.message);
-        }
-    };
+  const bySource = stats.by_source || {};
+  const byJur = stats.by_jurisdiction || {};
+  const byType = stats.by_type || {};
+  const total = stats.total_documents || 0;
+  const maxJur = Math.max(...Object.values(byJur).map(j => j.count), 1);
+  const isRunning = status?.is_running || false;
 
-    if (loading && !status) return <div>Loading...</div>;
+  return (
+    <div>
+      <div className="page-header">
+        <h2>Dashboard</h2>
+        <p>Overview of all ingested Canadian legal data</p>
+      </div>
 
-    return (
-        <div>
-            <div className="card">
-                <h2>System Status</h2>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '20px' }}>
-                    <div className={`status-badge ${status?.is_running ? 'status-active' : 'status-inactive'}`}>
-                        {status?.is_running ? 'RUNNING' : 'IDLE'}
-                    </div>
-                    <div>{status?.message}</div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '10px' }}>
-                    {!status?.is_running ? (
-                        <button className="btn" onClick={handleStart}>Start Scraping</button>
-                    ) : (
-                        <button className="btn btn-danger" onClick={handleStop}>Stop Scraping</button>
-                    )}
-                </div>
-            </div>
-
-            <div className="card">
-                <h2>Statistics</h2>
-                <div className="stats-grid">
-                    <div className="stat-item">
-                        <div className="stat-value">{status?.stats?.total || 0}</div>
-                        <div className="stat-label">Total Found</div>
-                    </div>
-                    <div className="stat-item">
-                        <div className="stat-value" style={{ color: 'var(--success)' }}>{status?.stats?.success || 0}</div>
-                        <div className="stat-label">Successfully Scraped</div>
-                    </div>
-                    <div className="stat-item">
-                        <div className="stat-value" style={{ color: 'var(--error)' }}>{status?.stats?.failed || 0}</div>
-                        <div className="stat-label">Failed</div>
-                    </div>
-                    <div className="stat-item">
-                        <div className="stat-value" style={{ color: 'var(--text-secondary)' }}>{status?.stats?.skipped || 0}</div>
-                        <div className="stat-label">Skipped (Already Exists)</div>
-                    </div>
-                </div>
-            </div>
-
-            {status?.current_target && (
-                <div className="card">
-                    <h2>Current Activity</h2>
-                    <p>Processing Target: <strong>{status.current_target}</strong></p>
-                </div>
-            )}
+      {/* Live run banner */}
+      {isRunning && (
+        <div className="alert alert-info">
+          <span className="status-dot running" />
+          Scraping: <strong>{status.current_source || 'starting...'}</strong>
+          &nbsp;&mdash;&nbsp;
+          {status.stats.success} success, {status.stats.failed} failed, {status.stats.skipped} skipped
+          {status.scrape_limit > 0 && <span> / limit {status.scrape_limit}</span>}
         </div>
-    );
-}
+      )}
 
-export default Dashboard;
+      {/* Top Stats */}
+      <div className="stat-grid">
+        <div className="stat-card">
+          <div className="stat-value" style={{ color: 'var(--accent)' }}>{total.toLocaleString()}</div>
+          <div className="stat-label">Total Documents</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-value" style={{ color: 'var(--info)' }}>{(byType.legislation || 0).toLocaleString()}</div>
+          <div className="stat-label">Legislation</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-value" style={{ color: 'var(--orange)' }}>{(byType.regulation || 0).toLocaleString()}</div>
+          <div className="stat-label">Regulations</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-value" style={{ color: 'var(--purple)' }}>{(byType.case_law || 0).toLocaleString()}</div>
+          <div className="stat-label">Case Law</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-value">{Object.keys(byJur).length}</div>
+          <div className="stat-label">Jurisdictions</div>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        {/* Sources breakdown */}
+        <div className="card">
+          <div className="card-title" style={{ marginBottom: 16 }}>Documents by Source</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {Object.entries(bySource)
+              .sort((a, b) => b[1] - a[1])
+              .map(([key, count]) => {
+                const meta = SOURCE_META[key] || { label: '?', badge: '', name: key };
+                const pct = total > 0 ? (count / total * 100) : 0;
+                return (
+                  <div key={key}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span className={`badge ${meta.badge}`}>{meta.label}</span>
+                        <span style={{ fontSize: 13, fontWeight: 500 }}>{meta.name}</span>
+                      </div>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
+                        {count.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="source-progress">
+                      <div className="source-progress-bar" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+
+        {/* Jurisdiction breakdown */}
+        <div className="card">
+          <div className="card-title" style={{ marginBottom: 16 }}>Documents by Jurisdiction</div>
+          <div className="jur-bar-wrap">
+            {Object.entries(byJur)
+              .sort((a, b) => b[1].count - a[1].count)
+              .map(([code, data]) => (
+                <div className="jur-bar-row" key={code}>
+                  <div className="jur-bar-label">{JUR_NAMES[code] || data.name || code}</div>
+                  <div className="jur-bar-track">
+                    <div
+                      className="jur-bar-fill"
+                      style={{
+                        width: `${(data.count / maxJur) * 100}%`,
+                        background: JUR_COLORS[code] || 'var(--accent)',
+                      }}
+                    />
+                  </div>
+                  <div className="jur-bar-count">{data.count.toLocaleString()}</div>
+                </div>
+              ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Live progress panel */}
+      {isRunning && status && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="card-title" style={{ marginBottom: 16 }}>Live Progress</div>
+          <div className="stat-grid">
+            <div className="stat-card">
+              <div className="stat-value" style={{ color: 'var(--success)' }}>{status.stats.success}</div>
+              <div className="stat-label">Success</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value" style={{ color: 'var(--error)' }}>{status.stats.failed}</div>
+              <div className="stat-label">Failed</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value" style={{ color: 'var(--text-muted)' }}>{status.stats.skipped}</div>
+              <div className="stat-label">Skipped</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value">
+                {status.scrape_limit ? Math.max(0, status.scrape_limit - status.stats.success - status.stats.failed) : '--'}
+              </div>
+              <div className="stat-label">Remaining</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', marginTop: 4 }}>
+            {status.message}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -65,6 +65,53 @@ def list_available_adapters():
         ]
     }
 
+@app.get("/sources/stats")
+def get_source_stats():
+    """Get per-source document counts and DB statistics."""
+    from scraper.supabase_client import SupabaseClient
+    db = SupabaseClient()
+    try:
+        # Total count
+        total_res = db.client.table('documents').select('id', count='exact').execute()
+        total_docs = total_res.count or 0
+
+        # Per source_type counts
+        source_counts = {}
+        for st in ['justice_canada_xml', 'bc_laws_api', 'a2aj_case_law', 'canlii_legacy']:
+            res = db.client.table('documents').select('id', count='exact').eq('source_type', st).execute()
+            if res.count:
+                source_counts[st] = res.count
+
+        # Per jurisdiction counts
+        jur_counts = {}
+        jur_res = db.client.table('jurisdictions').select('code,name').execute()
+        if jur_res.data:
+            for jur in jur_res.data:
+                res = db.client.table('documents').select('id', count='exact').eq('jurisdiction_code', jur['code']).execute()
+                if res.count:
+                    jur_counts[jur['code']] = {"name": jur['name'], "count": res.count}
+
+        # Recent scrape jobs
+        jobs_res = db.client.table('scrape_jobs').select('*').order('id', desc=True).limit(10).execute()
+        recent_jobs = jobs_res.data or []
+
+        # Per document_type counts
+        type_counts = {}
+        for dt in ['legislation', 'regulation', 'case_law']:
+            res = db.client.table('documents').select('id', count='exact').eq('document_type', dt).execute()
+            if res.count:
+                type_counts[dt] = res.count
+
+        return {
+            "total_documents": total_docs,
+            "by_source": source_counts,
+            "by_jurisdiction": jur_counts,
+            "by_type": type_counts,
+            "recent_jobs": recent_jobs,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ========== Scraper Control ==========
 
 @app.get("/status", response_model=ScraperStatus)
