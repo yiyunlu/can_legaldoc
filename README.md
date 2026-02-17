@@ -1,91 +1,90 @@
-# Canadian Legal Data Platform (v4.0)
+# Canadian Legal Data Platform (v5.4)
 
 面向加拿大少数族裔的法律咨询 Chatbot 数据基础设施。采集全国 13 省/地区 + 联邦的法律法规及历史判例，构建支持 RAG 检索增强生成的大规模法律知识库。
 
-> [!IMPORTANT]
-> **🤖 AI 开发者注意**: 核心架构、API 规范及 RAG 优化说明，请阅读 [AI_CONTEXT.md](./AI_CONTEXT.md)。
+> **全容器化部署** — Docker Compose 一键启动（PostgreSQL 16 + FastAPI + React），Cloudflare Tunnel 提供安全的外网访问。
 
 ---
 
 ## 📊 数据源一览
 
-| 数据源 | 类型 | 覆盖范围 | 文档数量 | 接入方式 |
-| :--- | :--- | :--- | :--- | :--- |
-| **Justice Canada XML** | 联邦法律 | 联邦 (ca) | ~5,800 | GitHub XML 仓库 |
-| **BC Laws CiviX API** | 省级法律 | BC 省 | ~880 | REST API |
-| **A2AJ Case Law** | 历史判例 | 全国 13 辖区 | 185,000+ | Hugging Face 数据集 |
-| **CanLII (Legacy)** | 法律法规 | AB / CA | 2,000+ | 网页爬虫 (有法律风险) |
+| 数据源 | 类型 | 覆盖范围 | 文档数量 | 接入方式 | 授权 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Justice Canada XML** | 联邦法律 | 联邦 (ca) | ~5,800 | GitHub XML 仓库 | Open Government Licence |
+| **BC Laws CiviX API** | 省级法律 | BC 省 | ~880 | REST API | QP Licence 1.0 |
+| **Alberta King's Printer** | 省级法律 | AB 省 | ~1,415 | CKAN API + HTML | 开放数据 |
+| **A2AJ Case Law** | 历史判例 | 全国 13 辖区 | 185,000+ | Hugging Face 数据集 | MIT |
+| **CanLII (Legacy)** | 法律法规 | AB / CA | 2,000+ | 网页爬虫 | ⚠️ 有法律风险 |
 
 ---
 
 ## 🚀 快速启动
 
-### 1. 环境准备
+### Docker 部署（推荐）
 
 ```bash
-# 克隆项目
+# 1. 克隆项目
 git clone https://github.com/yiyunlu/can_legaldoc.git
 cd can_legaldoc
 
-# 安装依赖
-pip install -r requirements.txt
+# 2. 配置环境变量
+cp .env.example .env
+nano .env   # 设置 POSTGRES_PASSWORD
+
+# 3. 一键启动
+docker compose up -d --build
+
+# 4. 验证
+curl http://localhost:8000/health
+# → {"status":"ok","service":"Canadian Legal Data Platform","version":"5.4"}
 ```
 
-配置 `.env` 文件：
-```bash
-SUPABASE_URL=你的Supabase项目URL
-SUPABASE_KEY=你的Supabase API密钥
-```
+访问 `http://localhost:8000` 进入 Web 管理面板。
 
-### 2. 初始化数据库
+### 环境变量说明
 
-在 Supabase Dashboard SQL Editor 中依次执行：
-```
-database/migration_v3_schema.sql        # 基础 schema
-database/migration_v4_multi_source.sql  # 多源支持 + 全国辖区
-```
+| 变量 | 必填 | 说明 |
+| :--- | :--- | :--- |
+| `POSTGRES_PASSWORD` | ✅ | PostgreSQL 数据库密码 |
+| `CLOUDFLARE_TUNNEL_TOKEN` | 否 | Cloudflare Tunnel token（外网访问） |
+| `ALLOWED_ORIGIN` | 否 | CORS 允许的域名 |
+| `SUPABASE_URL` / `SUPABASE_KEY` | 否 | 仅用于旧版迁移 / Keepalive |
 
-### 3. 验证环境
+> `DATABASE_URL` 由 `docker-compose.yml` 自动拼接，无需手动设置。
 
-```bash
-# 查看所有已注册的数据源和配置
-python main_multi.py --list-sources
-```
+---
 
-输出示例：
-```
-=== Registered Adapters ===
-  justice_canada_xml: JusticeCanadaXMLAdapter
-  bc_laws_api: BCLawsAPIAdapter
-  a2aj_case_law: A2AJCaseLawAdapter
-  canlii_legacy: CanLIILegacyAdapter
+## 🖥️ Web 管理面板
 
-=== Configured Sources ===
-  [ENABLED] justice_canada_xml: Federal Legislation (XML) (ca)
-  [ENABLED] bc_laws_api: BC Legislation (CiviX API) (bc)
-  [ENABLED] a2aj_case_law: A2AJ Case Law (Hugging Face) (multi)
-```
+5 页全功能管理面板（React 19 + Vite 7 暗色主题）：
+
+| 页面 | 功能 |
+| :--- | :--- |
+| **Dashboard** | 总览：文档统计、来源分布、辖区分布、实时采集进度、每源最后更新时间 |
+| **Data Sources** | 数据源管理：启用/禁用、触发采集、配置分发模式 |
+| **Documents** | 文档浏览器：搜索、按来源/辖区/类型筛选、分页、点击展开元数据详情 |
+| **Run History** | 运行历史：状态筛选（完成/失败/运行中）、分页、展开查看完整日志 |
+| **Settings** | 设置：内置调度器（每日/间隔）、Supabase Keepalive、限额与分发模式 |
 
 ---
 
 ## 📥 数据采集
 
-### CLI 方式 (`main_multi.py`)
+### Web UI 方式（推荐）
+
+1. 打开 Dashboard → **Data Sources** 页面
+2. 选择要采集的数据源，点击 **Run**
+3. 在 Dashboard 实时查看采集进度
+4. 采集完成后在 **Documents** 页面浏览数据
+
+### CLI 方式
 
 ```bash
-# 试运行 -- 仅发现文档，不下载不入库
-python main_multi.py --dry-run
-
-# 采集指定数据源，限制数量
-python main_multi.py --source-type justice_canada_xml --limit 100
-python main_multi.py --source-type bc_laws_api --limit 50
-python main_multi.py --source-type a2aj_case_law --limit 500
-
-# 采集全部已启用数据源
-python main_multi.py
-
-# 清除断点记录后重新采集
-python main_multi.py --reset --source-type bc_laws_api
+# 在 Docker 容器内执行
+docker exec canlii-platform python main_multi.py --list-sources
+docker exec canlii-platform python main_multi.py --limit 100
+docker exec canlii-platform python main_multi.py --source-type justice_canada_xml --limit 50
+docker exec canlii-platform python main_multi.py --dry-run
 ```
 
 | 参数 | 说明 |
@@ -99,98 +98,109 @@ python main_multi.py --reset --source-type bc_laws_api
 ### API 方式
 
 ```bash
-# 启动后端
-uvicorn api.main:app --reload --port 8000
-```
-
-```bash
-# 查看已配置数据源
-curl http://localhost:8000/sources
-
-# 查看所有可用适配器
-curl http://localhost:8000/sources/available
-
-# 启动多源采集
-curl -X POST http://localhost:8000/scraper/start \
+# 启动采集
+curl -X POST http://localhost:8000/api/scraper/start \
   -H "Content-Type: application/json" \
   -d '{"source_type": "justice_canada_xml", "scrape_limit": 100}'
 
-# 查看采集状态
-curl http://localhost:8000/status
+# 查看状态
+curl http://localhost:8000/api/status
+
+# 停止采集
+curl -X POST http://localhost:8000/api/scraper/stop \
+  -H "Content-Type: application/json" -d '{}'
 ```
 
-### Web UI 方式
+### 自动调度
+
+内置调度器支持定时自动采集，无需外部 cron/systemd：
 
 ```bash
-cd web && npm run dev
+# 启用每日自动采集（UTC 02:00，限额 500）
+curl -X POST http://localhost:8000/api/scheduler \
+  -H 'Content-Type: application/json' \
+  -d '{"enabled": true, "schedule_type": "daily", "daily_time": "02:00", "scrape_limit": 500}'
+
+# 手动触发一次调度采集
+curl -X POST http://localhost:8000/api/scheduler/trigger \
+  -H 'Content-Type: application/json' -d '{}'
 ```
 
-访问 `http://localhost:5173` 进入可视化工作台。
+也可以在 Web 面板的 **Settings** 页面图形化配置。
 
 ---
 
-## ⚙️ 数据源配置
+## 🗄️ 数据存储
 
-编辑 `config.json` 中的 `sources` 数组来管理数据源：
+### 存储架构
 
-```json
-{
-  "sources": [
-    {
-      "source_type": "justice_canada_xml",
-      "name": "Federal Legislation (XML)",
-      "jurisdiction": "ca",
-      "category": "Legislation",
-      "enabled": true,
-      "params": {}
-    },
-    {
-      "source_type": "a2aj_case_law",
-      "name": "A2AJ Case Law (Hugging Face)",
-      "jurisdiction": "multi",
-      "category": "Case Law",
-      "enabled": true,
-      "params": {
-        "dataset_name": "a2aj/canadian-case-law",
-        "streaming": true
-      }
-    }
-  ]
-}
-```
+平台保存 **全量数据**（元数据 + 完整文档内容），使用两层表结构：
 
-- `enabled`: 设为 `false` 可暂时禁用某数据源
-- `params`: 传递给适配器构造函数的参数
+| 表 | 内容 | 说明 |
+| :--- | :--- | :--- |
+| `documents` | 元数据 | title, citation, source_url, jurisdiction_code, source_type, document_type, metadata (JSONB) |
+| `document_versions` | 完整内容 | content_html, content_text (LZ4 压缩), SHA-256 内容哈希, 版本号 |
+| `document_chunks` | 分块 | 预留给未来的 RAG / 向量搜索 |
+
+### 版本控制
+
+每次采集时对文档内容计算 SHA-256 哈希：
+- **内容未变** → 跳过，不创建新版本（节省存储）
+- **内容已变** → 旧版本标记 `is_latest=false`，创建新版本（保留完整变更历史）
+
+### 完整 Schema
+
+| 表 | 说明 |
+| :--- | :--- |
+| `jurisdictions` | 14 个辖区: ca, ab, bc, on, qc, ns, nb, mb, pe, sk, nl, yt, nt, nu |
+| `documents` | 文档元数据 (source_url 唯一约束, source_type, document_type) |
+| `document_versions` | 内容版本 (content_hash 防冗余, LZ4 压缩) |
+| `document_chunks` | 文本分块 (预留 RAG) |
+| `scrape_targets` | Legacy 采集入口配置 |
+| `scrape_jobs` | 任务运行记录 |
+| `scheduler_config` | 调度器配置 (单行表) |
 
 ---
 
 ## 🏗️ 系统架构
 
 ```
-┌────────────────────────────────────────────────────┐
-│                  main_multi.py (CLI)                │
-│                  api/main.py (FastAPI)              │
-├────────────────────────────────────────────────────┤
-│               Adapter Registry (__init__.py)        │
-├──────────┬──────────┬───────────┬─────────────────┤
-│ Justice  │ BC Laws  │ A2AJ Case │ CanLII Legacy   │
-│ Canada   │ CiviX    │ Law (HF)  │ (Fast/Deep)     │
-│ XML      │ API      │           │                 │
-├──────────┴──────────┴───────────┴─────────────────┤
-│         BaseSourceAdapter (base.py)                │
-│  discover_documents() → fetch_documents_batch()    │
-├────────────────────────────────────────────────────┤
-│  Supabase Client        │  SQLite Checkpoint       │
-│  (documents + versions) │  (URL 去重)              │
-└────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────┐
+│               Docker Compose 容器编排                       │
+├────────────────────────────────────────────────────────────┤
+│  app (canlii-platform)                                     │
+│  ├── FastAPI (api/main.py)         → /api/* 路由           │
+│  ├── React SPA (web/)              → / 前端 (5 页面)       │
+│  ├── ScraperManager (api/manager)  → 采集调度              │
+│  ├── SchedulerService              → 定时自动采集           │
+│  └── main_multi.py (CLI)           → 命令行采集入口         │
+├────────────────────────────────────────────────────────────┤
+│  postgres (canlii-postgres)        → PostgreSQL 16         │
+│  └── LZ4 压缩 + 版本控制 + 全文存储                         │
+├────────────────────────────────────────────────────────────┤
+│  cloudflared (canlii-tunnel)       → Cloudflare Tunnel     │
+│  └── 安全外网访问 (可选)                                    │
+└────────────────────────────────────────────────────────────┘
+
+适配器架构:
+┌──────────┬──────────┬───────────────┬───────────┬──────────┐
+│ Justice  │ BC Laws  │ Alberta       │ A2AJ Case │ CanLII   │
+│ Canada   │ CiviX    │ King's        │ Law (HF)  │ Legacy   │
+│ XML      │ API      │ Printer       │           │          │
+├──────────┴──────────┴───────────────┴───────────┴──────────┤
+│              BaseSourceAdapter (base.py)                    │
+│   discover_documents() → fetch_documents_batch()           │
+├────────────────────────────────────────────────────────────┤
+│   DatabaseClient (psycopg2)  │  SQLite Checkpoint (去重)   │
+└────────────────────────────────────────────────────────────┘
 ```
 
 ### 核心流程
 
 1. **发现 (Discover)**: 适配器扫描数据源，返回 `DocumentMetadata` 列表
 2. **去重 (Checkpoint)**: 与 SQLite 断点库比对，过滤已采集的 URL
-3. **获取 (Fetch)**: 批量下载文档全文，返回 `DocumentContent`
-4. **入库 (Upsert)**: 写入 Supabase，SHA-256 内容哈希驱动版本控制
+3. **获取 (Fetch)**: 批量下载文档全文 (HTML + 纯文本)，返回 `DocumentContent`
+4. **入库 (Upsert)**: 写入 PostgreSQL，SHA-256 内容哈希驱动版本控制
 
 ### 关键目录
 
@@ -201,43 +211,57 @@ cd web && npm run dev
 │   │   ├── __init__.py                # 适配器注册表
 │   │   ├── justice_canada_xml.py      # 联邦法律 (GitHub XML)
 │   │   ├── bc_laws_api.py             # BC 省法律 (CiviX REST API)
+│   │   ├── alberta_kings_printer.py   # Alberta 省法律 (CKAN + HTML)
 │   │   ├── a2aj_case_law.py           # 全国判例 (Hugging Face)
 │   │   └── canlii_legacy.py           # Legacy CanLII 爬虫封装
-│   ├── supabase_client.py             # 数据库交互层
-│   ├── canlii_scraper.py              # Legacy Fast Engine
-│   └── canlii_playwright_scraper.py   # Legacy Deep Engine
+│   └── db_client.py                   # PostgreSQL 交互层 (psycopg2 连接池)
 ├── api/
-│   ├── main.py                        # FastAPI 路由 (v4.0)
-│   ├── manager.py                     # 调度中枢 (双模式)
+│   ├── main.py                        # FastAPI 路由
+│   ├── manager.py                     # 采集调度中枢
+│   ├── scheduler.py                   # 内置定时调度器
 │   └── models.py                      # Pydantic 模型
 ├── utils/
-│   ├── config.py                      # 配置管理 (targets + sources)
+│   ├── config.py                      # 配置管理
 │   ├── checkpoint.py                  # SQLite 断点管理
 │   └── logger.py
 ├── database/
-│   ├── migration_v3_schema.sql        # v3 基础 Schema
-│   └── migration_v4_multi_source.sql  # v4 多源扩展
-├── web/                               # React + Vite 前端
+│   └── init.sql                       # 完整 Schema (Docker 首次启动自动执行)
+├── web/                               # React 19 + Vite 7 前端
+│   └── src/pages/                     # 5 个页面组件
+│       ├── Dashboard.jsx
+│       ├── DataSources.jsx
+│       ├── Documents.jsx
+│       ├── RunHistory.jsx
+│       └── Settings.jsx
+├── scripts/
+│   └── migrate_supabase_to_local.py   # Supabase → PostgreSQL 迁移
 ├── main_multi.py                      # 多源采集 CLI 入口
-└── config.json                        # 数据源 + 采集目标配置
+├── config.json                        # 数据源配置
+├── docker-compose.yml                 # 容器编排
+├── Dockerfile                         # 应用镜像构建
+└── start.sh                           # 容器启动脚本
 ```
 
 ---
 
-## 📂 数据库 Schema (v4.0)
+## 🔌 API 端点
 
-| 表 | 说明 |
-| :--- | :--- |
-| `jurisdictions` | 14 个辖区: ca, ab, bc, on, qc, ns, nb, mb, pe, sk, nl, yt, nt, nu |
-| `documents` | 文档元数据 (source_url 唯一约束, source_type, document_type) |
-| `document_versions` | 内容版本 (content_hash 防冗余) |
-| `scrape_targets` | Legacy 采集入口配置 |
-| `scrape_jobs` | 任务流水线 |
-
-`documents` 表关键字段:
-- `source_type`: 数据来源 (`justice_canada_xml`, `bc_laws_api`, `a2aj_case_law`, `canlii_legacy`)
-- `document_type`: 文档类型 (`legislation`, `regulation`, `case_law`)
-- `jurisdiction_code`: 辖区代码 (`ca`, `bc`, `on`, ...)
+| 方法 | 路径 | 说明 |
+| :--- | :--- | :--- |
+| GET | `/health` | 健康检查 + 版本号 |
+| GET | `/api/status` | 采集器状态 + 调度器信息 |
+| GET | `/api/sources` | 已配置数据源列表 |
+| GET | `/api/sources/available` | 所有可用适配器 |
+| GET | `/api/sources/stats` | 文档统计（按来源/辖区/类型） |
+| POST | `/api/sources` | 更新数据源配置 |
+| POST | `/api/scraper/start` | 启动采集 |
+| POST | `/api/scraper/stop` | 停止采集 |
+| GET | `/api/scheduler` | 获取调度器配置 |
+| POST | `/api/scheduler` | 更新调度器配置 |
+| POST | `/api/scheduler/trigger` | 手动触发一次调度采集 |
+| GET | `/api/jobs` | 分页查询运行历史 |
+| GET | `/api/documents` | 分页查询文档列表（支持搜索/筛选） |
+| GET | `/api/documents/{id}` | 文档详情（元数据 + 版本信息） |
 
 ---
 
@@ -253,16 +277,16 @@ cd web && npm run dev
 from scraper.adapters import register_adapter
 from scraper.adapters.base import BaseSourceAdapter, DocumentMetadata, DocumentContent
 
-@register_adapter('alberta_kings_printer')
-class AlbertaKingsPrinterAdapter(BaseSourceAdapter):
+@register_adapter('ontario_laws')
+class OntarioLawsAdapter(BaseSourceAdapter):
     def get_source_name(self) -> str:
-        return "Alberta King's Printer"
+        return "Ontario Laws"
 
     def get_source_type(self) -> str:
-        return "alberta_kings_printer"
+        return "ontario_laws"
 
     def get_jurisdiction(self) -> str:
-        return "ab"
+        return "on"
 
     def discover_documents(self, limit=None):
         # 扫描文档列表 ...
@@ -274,14 +298,17 @@ class AlbertaKingsPrinterAdapter(BaseSourceAdapter):
 ```
 
 4. 在 `scraper/adapters/__init__.py` 的 `_ensure_adapters_loaded()` 中添加模块路径
-5. 在 `config.json` 的 `sources` 中添加配置项
+5. 在 `config.json` 的 `sources` 中添加配置项，或通过 Web 面板 Data Sources 页面添加
 
 ### 实施路线图
 
 - [x] **Phase 1**: 核心重构 + Tier 1 数据源 (API/XML 批量接入)
-- [ ] **Phase 2**: HTML 爬虫适配器 (AB, SK, MB, NB, NL, YT)
-- [ ] **Phase 3**: PDF 提取适配器 (ON, QC, NS, PE, NT, NU)
-- [ ] **前端更新**: Sources 管理面板
+- [x] **Phase 2**: Alberta King's Printer 适配器
+- [x] **Phase 3**: 自托管 PostgreSQL + Docker 全容器化
+- [x] **Phase 4**: 内置调度器 + 文档浏览器
+- [ ] **Phase 5**: HTML 爬虫适配器 (SK, MB, NB, NL, YT)
+- [ ] **Phase 6**: PDF 提取适配器 (ON, QC, NS, PE, NT, NU)
+- [ ] **Phase 7**: RAG 向量搜索集成 (pgvector)
 
 ---
 
@@ -292,9 +319,10 @@ class AlbertaKingsPrinterAdapter(BaseSourceAdapter):
 
 ---
 
-## 📄 技术文档
+## 📄 文档
 
-- [AI_CONTEXT.md](./AI_CONTEXT.md): 数据库 Schema、引擎协作原理及开发规范
-- [walkthrough.md](./walkthrough.md): 功能迭代日志与验证记录
-- [database/migration_v3_schema.sql](./database/migration_v3_schema.sql): v3 基础 Schema
-- [database/migration_v4_multi_source.sql](./database/migration_v4_multi_source.sql): v4 多源扩展
+| 文件 | 说明 |
+| :--- | :--- |
+| [DEPLOY.md](./DEPLOY.md) | 部署指南（PVE + Docker + Cloudflare Tunnel） |
+| [CHANGELOG.md](./CHANGELOG.md) | 版本更新日志 (v5.0 → v5.4) |
+| [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | 常见问题排查 |
