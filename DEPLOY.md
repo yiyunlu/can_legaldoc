@@ -134,7 +134,7 @@ Verify locally:
 ```bash
 # Health check
 curl http://localhost:8000/health
-# → {"status":"ok","service":"Canadian Legal Data Platform","version":"5.3"}
+# → {"status":"ok","service":"Canadian Legal Data Platform","version":"5.4"}
 
 # API status
 curl http://localhost:8000/api/status
