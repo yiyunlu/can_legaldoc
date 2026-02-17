@@ -13,10 +13,10 @@ import argparse
 import sys
 import threading
 
-from utils.config import Config, config
+from utils.config import config
 from utils.logger import logger
 from utils.checkpoint import Checkpoint
-from scraper.supabase_client import SupabaseClient
+from scraper.db_client import DatabaseClient
 from scraper.adapters import get_adapter, list_adapters
 
 
@@ -46,9 +46,6 @@ def main():
             print(f"  [{status}] {src['source_type']}: {src.get('name', '?')} ({src.get('jurisdiction', '?')})")
         return
 
-    # Validate
-    Config.validate()
-
     # Reset checkpoint if requested
     checkpoint = Checkpoint()
     if args.reset:
@@ -56,7 +53,7 @@ def main():
         logger.info("Checkpoint cleared")
 
     # Init DB client
-    db_client = SupabaseClient()
+    db_client = DatabaseClient()
     if not db_client.test_connection():
         logger.error("Database connection failed")
         sys.exit(1)
@@ -133,12 +130,7 @@ def main():
         # Ensure jurisdiction exists
         jur = adapter.get_jurisdiction()
         if jur and jur != 'multi':
-            try:
-                db_client.client.table('jurisdictions').upsert(
-                    {"code": jur, "name": jur.upper()}
-                ).execute()
-            except Exception:
-                pass
+            db_client.ensure_jurisdiction(jur)
 
         # Fetch and save
         effective_limit = remaining
@@ -150,13 +142,7 @@ def main():
 
             # Ensure jurisdiction for multi-jurisdiction sources
             if doc_content.jurisdiction_code:
-                try:
-                    db_client.client.table('jurisdictions').upsert(
-                        {"code": doc_content.jurisdiction_code,
-                         "name": doc_content.jurisdiction_code.upper()}
-                    ).execute()
-                except Exception:
-                    pass
+                db_client.ensure_jurisdiction(doc_content.jurisdiction_code)
 
             try:
                 success = db_client.upsert_document_v3(upsert_data)

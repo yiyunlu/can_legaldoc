@@ -13,7 +13,7 @@ from utils.config import config
 from utils.logger import logger
 from utils.checkpoint import Checkpoint
 from scraper.html_parser import HTMLParser
-from scraper.supabase_client import SupabaseClient
+from scraper.db_client import DatabaseClient
 
 
 class CanLIIPlaywrightScraper:
@@ -31,7 +31,7 @@ class CanLIIPlaywrightScraper:
         self.headless = headless
         self.cdp_url = cdp_url
         self.parser = HTMLParser()
-        self.db_client = SupabaseClient()
+        self.db_client = DatabaseClient()
         self.checkpoint = Checkpoint() if use_checkpoint else None
         
         # 浏览器实例管理

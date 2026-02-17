@@ -14,7 +14,7 @@ from utils.config import config
 from utils.logger import logger
 from utils.checkpoint import Checkpoint
 from .html_parser import HTMLParser
-from .supabase_client import SupabaseClient
+from .db_client import DatabaseClient
 
 
 class CanLIIScraper:
@@ -50,7 +50,7 @@ class CanLIIScraper:
         self._warm_up_session()
 
         self.parser = HTMLParser()
-        self.db_client = SupabaseClient()
+        self.db_client = DatabaseClient()
         self.checkpoint = Checkpoint() if use_checkpoint else None
         
         self.stats = {

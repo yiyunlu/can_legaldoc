@@ -1,4 +1,25 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: canlii-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: canlii
+      POSTGRES_USER: canlii
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-canlii_dev_pass}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - canlii-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U canlii -d canlii"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   app:
     build:
       context: .
@@ -13,12 +34,16 @@ services:
       - .env
     environment:
       - PYTHONDONTWRITEBYTECODE=1
+      - DATABASE_URL=postgresql://canlii:${POSTGRES_PASSWORD:-canlii_dev_pass}@postgres:5432/canlii
     volumes:
       - ./checkpoint.db:/app/checkpoint.db
       - ./data:/app/data
       - ./config.json:/app/config.json
     networks:
       - canlii-net
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   cloudflared:
     image: cloudflare/cloudflared:latest
@@ -35,3 +60,6 @@ services:
 networks:
   canlii-net:
     driver: bridge
+
+volumes:
+  pgdata:

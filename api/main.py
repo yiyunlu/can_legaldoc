@@ -7,8 +7,9 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import FileResponse
 
-from api.models import ConfigUpdateRequest, ScraperStatus, ScraperStartRequest, SourcesUpdateRequest
+from api.models import ConfigUpdateRequest, ScraperStatus, ScraperStartRequest, SourcesUpdateRequest, SchedulerConfigRequest
 from api.manager import scraper_manager
+from api.scheduler import scheduler_service
 from utils.config import config
 
 app = FastAPI(title="Canadian Legal Data Platform API")
@@ -29,7 +30,7 @@ app.add_middleware(
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "Canadian Legal Data Platform", "version": "5.1"}
+    return {"status": "ok", "service": "Canadian Legal Data Platform", "version": "5.3"}
 
 
 # ========================================================================
@@ -87,47 +88,10 @@ def list_available_adapters():
 @api_router.get("/sources/stats")
 def get_source_stats():
     """Get per-source document counts and DB statistics."""
-    from scraper.supabase_client import SupabaseClient
-    db = SupabaseClient()
+    from scraper.db_client import DatabaseClient
+    db = DatabaseClient()
     try:
-        # Total count
-        total_res = db.client.table('documents').select('id', count='exact').execute()
-        total_docs = total_res.count or 0
-
-        # Per source_type counts
-        source_counts = {}
-        for st in ['justice_canada_xml', 'bc_laws_api', 'alberta_kings_printer', 'a2aj_case_law', 'canlii_legacy']:
-            res = db.client.table('documents').select('id', count='exact').eq('source_type', st).execute()
-            if res.count:
-                source_counts[st] = res.count
-
-        # Per jurisdiction counts
-        jur_counts = {}
-        jur_res = db.client.table('jurisdictions').select('code,name').execute()
-        if jur_res.data:
-            for jur in jur_res.data:
-                res = db.client.table('documents').select('id', count='exact').eq('jurisdiction_code', jur['code']).execute()
-                if res.count:
-                    jur_counts[jur['code']] = {"name": jur['name'], "count": res.count}
-
-        # Recent scrape jobs
-        jobs_res = db.client.table('scrape_jobs').select('*').order('id', desc=True).limit(10).execute()
-        recent_jobs = jobs_res.data or []
-
-        # Per document_type counts
-        type_counts = {}
-        for dt in ['legislation', 'regulation', 'case_law']:
-            res = db.client.table('documents').select('id', count='exact').eq('document_type', dt).execute()
-            if res.count:
-                type_counts[dt] = res.count
-
-        return {
-            "total_documents": total_docs,
-            "by_source": source_counts,
-            "by_jurisdiction": jur_counts,
-            "by_type": type_counts,
-            "recent_jobs": recent_jobs,
-        }
+        return db.get_source_stats()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -162,6 +126,33 @@ def stop_scraper():
     return {"status": "stopping", "message": msg}
 
 
+# ---- Scheduler ----
+
+@api_router.get("/scheduler")
+def get_scheduler():
+    """Get scheduler configuration and status."""
+    return scheduler_service.get_status()
+
+@api_router.post("/scheduler")
+def update_scheduler(req: SchedulerConfigRequest):
+    """Update scheduler configuration."""
+    from scraper.db_client import DatabaseClient
+    db = DatabaseClient()
+    updates = {k: v for k, v in req.dict().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    db.update_scheduler_config(updates)
+    return {"status": "success", "config": db.get_scheduler_config()}
+
+@api_router.post("/scheduler/trigger")
+def trigger_scheduler():
+    """Manually trigger a scheduled scrape run."""
+    success, msg = scheduler_service.trigger_now()
+    if not success:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"status": "triggered", "message": msg}
+
+
 # ---- Discovery (legacy CanLII) ----
 
 @api_router.get("/discovery/explore")
@@ -187,6 +178,13 @@ def get_discovery_cache():
 # ========================================================================
 
 app.include_router(api_router)
+
+
+# ---------- Startup: auto-start scheduler ----------
+
+@app.on_event("startup")
+def startup_scheduler():
+    scheduler_service.start()
 
 # Serve built React frontend in production (when web/dist/ exists)
 _dist = Path(__file__).parent.parent / "web" / "dist"

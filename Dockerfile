@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     libxml2-dev \
     libxslt1-dev \
+    libpq-dev \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 

@@ -6,14 +6,16 @@ Deploy the Canadian Legal Data Platform on a Proxmox VE LXC container with Docke
 
 ```
 Internet → Cloudflare Tunnel → Docker (app:8000) → FastAPI + React SPA
-                                                  → Supabase (cloud DB)
+                                                  → PostgreSQL 16 (local, Docker)
 ```
 
 - **LXC container** on Proxmox VE (Debian 12 / Ubuntu 22.04)
-- **Docker** runs the app + cloudflared sidecar
+- **Docker** runs the app + PostgreSQL + cloudflared sidecar
+- **PostgreSQL 16** stores all data locally (no cloud DB dependency)
 - **FastAPI** serves both the API (`/api/*`) and the built React frontend
 - **Cloudflare Access** handles authentication (no app-level login needed)
-- **systemd timer** runs daily automated scraping at 2 AM
+- **Built-in scheduler** runs automated scraping (configurable daily/interval, no external cron needed)
+- **systemd timer** available as an alternative for automated scraping
 
 ---
 
@@ -91,24 +93,27 @@ nano .env
 Fill in your values:
 
 ```env
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your-supabase-key
+POSTGRES_PASSWORD=your_secure_password
 CLOUDFLARE_TUNNEL_TOKEN=your-tunnel-token
 ALLOWED_ORIGIN=https://canlii.your-domain.com
 ```
+
+> **Note:** `DATABASE_URL` is auto-constructed by `docker-compose.yml` from `POSTGRES_PASSWORD`. You only need to set `POSTGRES_PASSWORD` in `.env`.
 
 Ensure `config.json` has your desired data sources configured.
 
 ---
 
-## 4. Database Migrations
+## 4. Database Setup
 
-If this is a fresh Supabase project, run the migrations in the **Supabase SQL Editor**:
+PostgreSQL initializes automatically on first container start. The schema in `database/init.sql` is mounted into the container's `docker-entrypoint-initdb.d/` directory.
 
-1. `database/migration_v3_schema.sql` — creates base tables
-2. `database/migration_v4_multi_source.sql` — adds multi-source columns + jurisdictions
+**Fresh install:** No manual migration needed — `docker compose up` handles everything.
 
-If you already have data (from previous runs), only run the v4 migration.
+**Migrating from Supabase (v5.1 or earlier):** Add your Supabase credentials to `.env`, then run:
+```bash
+docker exec canlii-platform python scripts/migrate_supabase_to_local.py
+```
 
 ---
 
@@ -129,7 +134,7 @@ Verify locally:
 ```bash
 # Health check
 curl http://localhost:8000/health
-# → {"status":"ok","service":"Canadian Legal Data Platform","version":"5.0"}
+# → {"status":"ok","service":"Canadian Legal Data Platform","version":"5.3"}
 
 # API status
 curl http://localhost:8000/api/status
@@ -189,7 +194,41 @@ Now visiting `https://canlii.your-domain.com` will prompt for Cloudflare login b
 
 ## 8. Set Up Automated Scraping
 
-### Option A: systemd timer (recommended)
+### Option A: Built-in Scheduler (recommended, v5.3+)
+
+The platform includes a built-in scheduler that runs inside the Docker container. No external cron or systemd setup needed.
+
+1. Open the dashboard → **Settings** page
+2. Find the **Scheduler** card
+3. Toggle **Enabled**
+4. Choose schedule type:
+   - **Daily at HH:MM UTC** (e.g., 02:00)
+   - **Every N hours** (e.g., every 12 hours)
+5. Set **Scrape Limit** (default 500) and **Distribution Mode**
+6. Click **Save**
+
+The scheduler automatically:
+- Runs scraping at the configured time
+- Recovers missed runs after container restarts
+- Tags jobs as `[scheduled]` in Run History
+- Reloads config changes within 1 minute
+
+**Via API:**
+```bash
+# Enable scheduler
+curl -X POST http://localhost:8000/api/scheduler \
+  -H 'Content-Type: application/json' \
+  -d '{"enabled": true, "schedule_type": "daily", "daily_time": "02:00", "scrape_limit": 500}'
+
+# Check scheduler status
+curl http://localhost:8000/api/scheduler
+
+# Manually trigger a run
+curl -X POST http://localhost:8000/api/scheduler/trigger \
+  -H 'Content-Type: application/json' -d '{}'
+```
+
+### Option B: systemd timer (legacy)
 
 ```bash
 # Copy units
@@ -208,7 +247,7 @@ systemctl start canlii-daily-scrape.timer
 systemctl list-timers | grep canlii
 ```
 
-### Option B: crontab
+### Option C: crontab (legacy)
 
 ```bash
 chmod +x /opt/canlii/cron/daily-scrape.sh
@@ -263,10 +302,27 @@ docker exec canlii-platform python main_multi.py --list-sources
 tail -f /var/log/canlii-scrape.log
 ```
 
-### Backup checkpoint
+### Backup database
 
 ```bash
+# Full PostgreSQL dump
+docker exec canlii-postgres pg_dump -U canlii canlii > /opt/canlii/backup_$(date +%Y%m%d).sql
+
+# Backup checkpoint
 cp /opt/canlii/checkpoint.db /opt/canlii/checkpoint.db.bak
+```
+
+### Restore database from backup
+
+```bash
+# Stop the app first
+docker compose stop app
+
+# Restore
+docker exec -i canlii-postgres psql -U canlii canlii < /opt/canlii/backup_20250217.sql
+
+# Restart
+docker compose start app
 ```
 
 ### Skip Playwright (smaller image)
@@ -297,6 +353,70 @@ git pull
 docker compose up -d --build
 ```
 
+### v5.2 → v5.3 (2025-02-17)
+
+**What changed:**
+- Built-in scheduler replaces external systemd/cron for automated scraping
+- `scheduler_config` table added to PostgreSQL (auto-created on startup)
+- Supabase keepalive daemon prevents free-tier project pause
+- Scrape jobs tagged with `[manual]` or `[scheduled]` trigger source
+- 3 new API endpoints: `GET/POST /api/scheduler`, `POST /api/scheduler/trigger`
+- Scheduler UI card in Settings page
+
+**Upgrade steps:**
+1. `cd /opt/canlii && git pull`
+2. `docker compose up -d --build`
+3. No manual DB migration needed — `scheduler_config` table auto-creates on app startup
+
+**Verify:**
+```bash
+# Health check should return version 5.3
+curl http://localhost:8000/health
+
+# Scheduler config should exist
+curl http://localhost:8000/api/scheduler
+
+# Check scheduler_config table
+docker exec canlii-postgres psql -U canlii -d canlii -c "SELECT enabled, schedule_type, daily_time FROM scheduler_config;"
+```
+
+**Optional:** If you had a systemd timer set up from v5.1/v5.2, you can now disable it and use the built-in scheduler instead:
+```bash
+systemctl disable canlii-daily-scrape.timer
+systemctl stop canlii-daily-scrape.timer
+```
+Then enable the built-in scheduler via the Settings page.
+
+### v5.1 → v5.2 (2025-02-17)
+
+**What changed:**
+- Database migrated from Supabase (cloud) to self-hosted PostgreSQL 16 (Docker)
+- `SupabaseClient` replaced by `DatabaseClient` (psycopg2 + connection pooling)
+- `docker-compose.yml` now includes `postgres` service with health checks
+- `DATABASE_URL` replaces `SUPABASE_URL`/`SUPABASE_KEY` as the required env var
+
+**Upgrade steps:**
+1. `cd /opt/canlii && git pull`
+2. Add `POSTGRES_PASSWORD=your_secure_password` to `.env`
+3. `docker compose up -d --build` (PostgreSQL container starts + auto-initializes schema)
+4. Migrate existing data from Supabase:
+   ```bash
+   docker exec canlii-platform python scripts/migrate_supabase_to_local.py
+   ```
+5. Verify data migrated: check Dashboard shows same document counts
+
+**Verify:**
+```bash
+# Health check should return version 5.2
+curl http://localhost:8000/health
+
+# Check PostgreSQL is running
+docker exec canlii-postgres pg_isready -U canlii -d canlii
+
+# Verify document count
+docker exec canlii-postgres psql -U canlii -d canlii -c "SELECT COUNT(*) FROM documents;"
+```
+
 ### v5.0 → v5.1 (2025-02-17)
 
 **What changed:**
@@ -325,13 +445,16 @@ docker exec canlii-platform python main_multi.py --source alberta_kings_printer 
 
 ## Verification Checklist
 
-- [ ] `curl http://localhost:8000/health` returns `{"status":"ok"}`
-- [ ] `curl http://localhost:8000/api/status` returns scraper status
+- [ ] `curl http://localhost:8000/health` returns `{"status":"ok","version":"5.3"}`
+- [ ] `curl http://localhost:8000/api/status` returns scraper status with `scheduler` field
+- [ ] `curl http://localhost:8000/api/scheduler` returns scheduler config
 - [ ] `http://localhost:8000` in browser shows the React dashboard
 - [ ] All 4 pages load (Dashboard, Data Sources, Run History, Settings)
+- [ ] Settings page shows Scheduler card with enable toggle and schedule config
 - [ ] Mobile layout works (resize browser or test on phone)
 - [ ] `https://canlegal.ecomm101.cc` loads behind Cloudflare Access
 - [ ] `docker exec canlii-platform python main_multi.py --list-sources` works
-- [ ] `systemctl list-timers | grep canlii` shows the daily timer
 - [ ] Run a test scrape from the Data Sources page (click "Run" on any source)
+- [ ] Scheduler "Run Now" button triggers a scrape
+- [ ] Scheduled jobs appear in Run History with `[scheduled]` tag
 - [ ] Alberta King's Printer source appears in Data Sources page

@@ -45,6 +45,11 @@ export const api = {
     startMultiSource:     (payload)=> post('/scraper/start', payload),
     stopScraper:          ()       => post('/scraper/stop', {}),
 
+    // Scheduler
+    getSchedulerConfig:    ()      => request('/scheduler'),
+    updateSchedulerConfig: (cfg)   => post('/scheduler', cfg),
+    triggerScheduledRun:   ()      => post('/scheduler/trigger', {}),
+
     // Legacy (kept for backward compat)
     getConfig:            ()       => request('/config'),
     updateConfig:         (targets)=> post('/config', { targets }),

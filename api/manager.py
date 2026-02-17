@@ -3,7 +3,7 @@ import time
 from typing import Dict, Optional, List
 from utils.config import config
 from utils.logger import logger
-from scraper.supabase_client import SupabaseClient
+from scraper.db_client import DatabaseClient
 from utils.checkpoint import Checkpoint
 
 # Default estimated doc counts per source (used for proportional distribution)
@@ -36,8 +36,8 @@ class ScraperManager:
         self.headless = True
         self.cdp_url: Optional[str] = None
         self.scrape_limit: int = 100
-        self.job_id: Optional[int] = None
-        self.db_client = SupabaseClient()
+        self.job_id: Optional[str] = None
+        self.db_client = DatabaseClient()
         self.active_scraper = None
         self.checkpoint = Checkpoint()
         # Multi-source fields
@@ -46,14 +46,16 @@ class ScraperManager:
         self.distribution_mode: str = "proportional"
         self.source_estimates: Optional[Dict[str, int]] = None
 
-        self._cleanup_stale_jobs()
+        self.trigger_source: str = "manual"
+        self.db_client.cleanup_stale_jobs()
 
     def start_scraping(self, engine: str = "fast", headless: bool = True,
                        cdp_url: Optional[str] = None, scrape_limit: int = 100,
                        source_type: Optional[str] = None,
                        source_types: Optional[List[str]] = None,
                        distribution_mode: Optional[str] = "proportional",
-                       source_estimates: Optional[Dict[str, int]] = None):
+                       source_estimates: Optional[Dict[str, int]] = None,
+                       trigger_source: str = "manual"):
         if self.is_running:
             return False, "Scraper is already running"
 
@@ -65,6 +67,7 @@ class ScraperManager:
         self.source_types_filter = source_types
         self.distribution_mode = distribution_mode or "proportional"
         self.source_estimates = source_estimates
+        self.trigger_source = trigger_source
         self.stats = {'total': 0, 'success': 0, 'failed': 0, 'skipped': 0}
         self.stop_event.clear()
         self.is_running = True
@@ -86,22 +89,6 @@ class ScraperManager:
         self.stop_event.set()
         self.message = "Stopping..."
         return True, "Stop signal sent"
-
-    def _cleanup_stale_jobs(self):
-        """Mark stale 'running' jobs as failed on startup."""
-        try:
-            res = self.db_client.client.table('scrape_jobs')\
-                .update({
-                    "status": "failed",
-                    "logs": "Interrupted: System restarted or script crashed",
-                    "finished_at": "now()"
-                })\
-                .eq('status', 'running')\
-                .execute()
-            if res.data:
-                logger.info(f"Cleaned up {len(res.data)} stale jobs.")
-        except Exception as e:
-            logger.warning(f"Failed to cleanup stale jobs: {e}")
 
     # ========== Limit Distribution ==========
 
@@ -170,8 +157,8 @@ class ScraperManager:
             from scraper.adapters import get_adapter
 
             # Create job record
-            mode_label = f"multi-source ({self.distribution_mode})"
-            self._create_job_record(mode_label)
+            mode_label = f"[{self.trigger_source}] multi-source ({self.distribution_mode})"
+            self.job_id = self.db_client.create_job(mode_label)
 
             # Filter sources
             sources = config.sources
@@ -254,7 +241,7 @@ class ScraperManager:
 
                     # Save to database
                     upsert_data = doc_content.to_upsert_dict(source_type=source_type)
-                    self._ensure_jurisdiction(doc_content.jurisdiction_code)
+                    self.db_client.ensure_jurisdiction(doc_content.jurisdiction_code)
 
                     try:
                         success = self.db_client.upsert_document_v3(upsert_data)
@@ -289,17 +276,6 @@ class ScraperManager:
             self.thread = None
             self.job_id = None
 
-    def _ensure_jurisdiction(self, jur_code: str):
-        """Ensure jurisdiction exists in DB."""
-        if not jur_code:
-            return
-        try:
-            self.db_client.client.table('jurisdictions').upsert({
-                "code": jur_code, "name": jur_code.upper()
-            }).execute()
-        except Exception:
-            pass
-
     # ========== Legacy CanLII Run Loop ==========
 
     def _run_legacy_loop(self):
@@ -316,7 +292,7 @@ class ScraperManager:
                 scraper = CanLIIScraper(use_checkpoint=True)
 
             self.active_scraper = scraper
-            self._create_job_record(self.engine_type)
+            self.job_id = self.db_client.create_job(f"[{self.trigger_source}] {self.engine_type}")
 
             targets = config.targets
             session_newly_scraped = 0
@@ -373,9 +349,7 @@ class ScraperManager:
             jur_code = target.get('province', 'ab').lower()
             category = target.get('type', 'Legislation')
 
-            self.db_client.client.table('jurisdictions').upsert({
-                "code": jur_code, "name": jur_code.upper()
-            }).execute()
+            self.db_client.ensure_jurisdiction(jur_code)
 
             target_entry = {
                 "jurisdiction_code": jur_code,
@@ -383,18 +357,7 @@ class ScraperManager:
                 "name": target['name'],
                 "url": target['url']
             }
-            res = self.db_client.client.table('scrape_targets').upsert(
-                target_entry, on_conflict='url'
-            ).execute()
-
-            target_id = None
-            if res.data:
-                target_id = res.data[0]['id']
-            else:
-                res_sel = self.db_client.client.table('scrape_targets')\
-                    .select('id').eq('url', target['url']).execute()
-                if res_sel.data:
-                    target_id = res_sel.data[0]['id']
+            target_id = self.db_client.upsert_scrape_target(target_entry)
 
             return {
                 "jurisdiction_code": jur_code,
@@ -407,47 +370,29 @@ class ScraperManager:
 
     # ========== Job Tracking Helpers ==========
 
-    def _create_job_record(self, engine_label: str):
-        try:
-            job_res = self.db_client.client.table('scrape_jobs').insert({
-                "status": "running",
-                "items_scraped": 0,
-                "items_failed": 0,
-                "logs": f"Engine: {engine_label} | Message: Started"
-            }).execute()
-            if job_res.data:
-                self.job_id = job_res.data[0]['id']
-                logger.info(f"Job record created: {self.job_id}")
-        except Exception as e:
-            logger.warning(f"Failed to create job record: {e}")
-
     def _update_job_stats(self):
         if not self.job_id:
             return
-        try:
-            self.db_client.client.table('scrape_jobs').update({
-                "items_scraped": self.stats.get('success', 0),
-                "items_failed": self.stats.get('failed', 0),
-                "logs": f"Source: {self.current_source or self.engine_type} | Target: {self.current_target} | Msg: {self.message}"
-            }).eq('id', self.job_id).execute()
-        except Exception as e:
-            logger.warning(f"Failed to update job stats: {e}")
+        logs = f"Source: {self.current_source or self.engine_type} | Target: {self.current_target} | Msg: {self.message}"
+        self.db_client.update_job(
+            self.job_id,
+            items_scraped=self.stats.get('success', 0),
+            items_failed=self.stats.get('failed', 0),
+            logs=logs
+        )
 
     def _finalize_job(self):
         if not self.job_id:
             return
-        try:
-            status = "completed" if self.message == "Finished" else "failed"
-            self.db_client.client.table('scrape_jobs').update({
-                "status": status,
-                "items_scraped": self.stats.get('success', 0),
-                "items_failed": self.stats.get('failed', 0),
-                "logs": f"Final: {self.message} | success={self.stats['success']} failed={self.stats['failed']} skipped={self.stats['skipped']}",
-                "finished_at": "now()"
-            }).eq('id', self.job_id).execute()
-            logger.info(f"Job {self.job_id} marked as {status}")
-        except Exception as e:
-            logger.warning(f"Failed to finalize job: {e}")
+        status = "completed" if self.message == "Finished" else "failed"
+        logs = f"[{self.trigger_source}] Final: {self.message} | success={self.stats['success']} failed={self.stats['failed']} skipped={self.stats['skipped']}"
+        self.db_client.finalize_job(
+            self.job_id,
+            status=status,
+            items_scraped=self.stats.get('success', 0),
+            items_failed=self.stats.get('failed', 0),
+            logs=logs
+        )
 
     # ========== Status ==========
 
@@ -460,13 +405,26 @@ class ScraperManager:
             stats.update(scraper_stats)
             stats['total'] += current_total
 
+        # Include lightweight scheduler summary
+        scheduler_info = None
+        try:
+            sched_cfg = self.db_client.get_scheduler_config()
+            if sched_cfg:
+                scheduler_info = {
+                    "enabled": sched_cfg.get("enabled", False),
+                    "next_run_at": sched_cfg.get("next_run_at"),
+                }
+        except Exception:
+            pass
+
         return {
             "is_running": self.is_running,
             "current_target": self.current_target,
             "current_source": self.current_source,
             "stats": stats,
             "message": self.message,
-            "scrape_limit": self.scrape_limit
+            "scrape_limit": self.scrape_limit,
+            "scheduler": scheduler_info,
         }
 
 scraper_manager = ScraperManager()

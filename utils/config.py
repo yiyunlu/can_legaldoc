@@ -19,7 +19,10 @@ class Config:
     # 配置文件路径
     CONFIG_FILE = Path(__file__).parent.parent / 'config.json'
 
-    # Supabase 配置
+    # Database — local PostgreSQL (v5.2+)
+    DATABASE_URL = os.getenv('DATABASE_URL')
+
+    # Supabase (legacy, optional — kept for migration script)
     SUPABASE_URL = os.getenv('SUPABASE_URL')
     SUPABASE_KEY = os.getenv('SUPABASE_KEY')
     
@@ -131,11 +134,9 @@ class Config:
     @classmethod
     def validate(cls):
         """验证必需的配置项"""
-        if not cls.SUPABASE_URL:
-            raise ValueError("SUPABASE_URL 未设置")
-        if not cls.SUPABASE_KEY:
-            raise ValueError("SUPABASE_KEY 未设置")
-        
+        if not cls.DATABASE_URL:
+            raise ValueError("DATABASE_URL 未设置")
+
         return True
 
 

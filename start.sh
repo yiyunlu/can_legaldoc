@@ -1,11 +1,11 @@
 #!/bin/bash
 set -e
 
-echo "=== Canadian Legal Data Platform v5.0 ==="
+echo "=== Canadian Legal Data Platform v5.3 ==="
 echo "Checking environment..."
 
-if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ]; then
-    echo "ERROR: SUPABASE_URL and SUPABASE_KEY must be set"
+if [ -z "$DATABASE_URL" ]; then
+    echo "ERROR: DATABASE_URL must be set"
     exit 1
 fi
 
