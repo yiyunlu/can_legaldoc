@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
-import { api } from './api';
+import { api, isBackendOnline } from './api';
 import Dashboard from './pages/Dashboard';
 import DataSources from './pages/DataSources';
 import RunHistory from './pages/RunHistory';
@@ -17,13 +17,25 @@ export default function App() {
   const [tab, setTab] = useState('dashboard');
   const [status, setStatus] = useState(null);
   const [stats, setStats] = useState(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [online, setOnline] = useState(true);
 
-  // Poll scraper status every 2s
+  // Poll scraper status — 2s when running, 5s idle, 10s offline
   useEffect(() => {
-    const poll = () => api.getStatus().then(setStatus).catch(() => {});
+    let timer;
+    const poll = async () => {
+      try {
+        const s = await api.getStatus();
+        setStatus(s);
+        setOnline(true);
+      } catch {
+        setOnline(isBackendOnline());
+      }
+      const interval = (!isBackendOnline()) ? 10000 : (status?.is_running ? 2000 : 5000);
+      timer = setTimeout(poll, interval);
+    };
     poll();
-    const id = setInterval(poll, 2000);
-    return () => clearInterval(id);
+    return () => clearTimeout(timer);
   }, []);
 
   // Fetch DB stats on mount and when scraper finishes
@@ -34,15 +46,33 @@ export default function App() {
   }, [status?.is_running]);
 
   const isRunning = status?.is_running || false;
-  const statusClass = isRunning ? 'running' : (status?.message?.startsWith('Error') ? 'error' : 'idle');
+  const statusClass = !online ? 'offline' : isRunning ? 'running' : (status?.message?.startsWith('Error') ? 'error' : 'idle');
+  const statusLabel = !online ? 'Offline' : isRunning ? 'Running' : 'Idle';
+
+  const switchTab = (id) => {
+    setTab(id);
+    setMenuOpen(false);
+  };
 
   return (
     <div className="app-layout">
+      {/* ── Mobile Header ── */}
+      <div className="mobile-header">
+        <button className={`hamburger ${menuOpen ? 'open' : ''}`} onClick={() => setMenuOpen(!menuOpen)}>
+          <span /><span /><span />
+        </button>
+        <span className="mobile-brand">Canadian Legal Data</span>
+        <span className={`status-dot ${statusClass} mobile-status-dot`} />
+      </div>
+
+      {/* ── Sidebar Overlay (mobile) ── */}
+      <div className={`sidebar-overlay ${menuOpen ? 'visible' : ''}`} onClick={() => setMenuOpen(false)} />
+
       {/* ── Sidebar ── */}
-      <nav className="sidebar">
+      <nav className={`sidebar ${menuOpen ? 'open' : ''}`}>
         <div className="sidebar-brand">
           <h1>Canadian Legal Data</h1>
-          <div className="version">v5.0 Multi-Source Platform</div>
+          <div className="version">v5.1 Multi-Source Platform</div>
         </div>
 
         <div className="sidebar-nav">
@@ -50,7 +80,7 @@ export default function App() {
             <a
               key={t.id}
               className={`nav-item ${tab === t.id ? 'active' : ''}`}
-              onClick={() => setTab(t.id)}
+              onClick={() => switchTab(t.id)}
             >
               <span className="nav-icon">{t.icon}</span>
               {t.label}
@@ -61,7 +91,7 @@ export default function App() {
         <div className="sidebar-status">
           <div className="status-indicator">
             <span className={`status-dot ${statusClass}`} />
-            {isRunning ? 'Running' : 'Idle'}
+            {statusLabel}
           </div>
           {isRunning && status?.current_source && (
             <div className="status-detail">{status.current_source}</div>

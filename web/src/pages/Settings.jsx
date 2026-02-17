@@ -63,7 +63,7 @@ export default function Settings() {
               </span>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+            <div className="settings-grid-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
               <div>
                 <label style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
                   Jurisdiction
@@ -110,7 +110,7 @@ export default function Settings() {
         <div className="card-title" style={{ marginBottom: 12 }}>System Information</div>
         <div className="settings-row">
           <div className="settings-label">Platform Version</div>
-          <div style={{ fontWeight: 600 }}>v5.0</div>
+          <div style={{ fontWeight: 600 }}>v5.1</div>
         </div>
         <div className="settings-row">
           <div className="settings-label">Registered Adapters</div>

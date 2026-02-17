@@ -55,6 +55,7 @@ def _ensure_adapters_loaded():
     adapter_modules = [
         'scraper.adapters.justice_canada_xml',
         'scraper.adapters.bc_laws_api',
+        'scraper.adapters.alberta_kings_printer',
         'scraper.adapters.a2aj_case_law',
         'scraper.adapters.canlii_legacy',
     ]

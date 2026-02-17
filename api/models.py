@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 class ScrapeTarget(BaseModel):
     province: str
@@ -29,6 +29,10 @@ class ScraperStartRequest(BaseModel):
     # Multi-source fields
     source_type: Optional[str] = None  # filter to a specific source type
     source_types: Optional[List[str]] = None  # or multiple source types
+    # Limit distribution: sequential | equal | proportional
+    distribution_mode: Optional[str] = "proportional"
+    # Estimated totals for proportional mode (source_type -> count)
+    source_estimates: Optional[Dict[str, int]] = None
 
 class SourceConfig(BaseModel):
     source_type: str

@@ -29,7 +29,7 @@ app.add_middleware(
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "Canadian Legal Data Platform", "version": "5.0"}
+    return {"status": "ok", "service": "Canadian Legal Data Platform", "version": "5.1"}
 
 
 # ========================================================================
@@ -96,7 +96,7 @@ def get_source_stats():
 
         # Per source_type counts
         source_counts = {}
-        for st in ['justice_canada_xml', 'bc_laws_api', 'a2aj_case_law', 'canlii_legacy']:
+        for st in ['justice_canada_xml', 'bc_laws_api', 'alberta_kings_printer', 'a2aj_case_law', 'canlii_legacy']:
             res = db.client.table('documents').select('id', count='exact').eq('source_type', st).execute()
             if res.count:
                 source_counts[st] = res.count
@@ -147,6 +147,8 @@ def start_scraper(req: ScraperStartRequest):
         scrape_limit=req.scrape_limit,
         source_type=req.source_type,
         source_types=req.source_types,
+        distribution_mode=req.distribution_mode,
+        source_estimates=req.source_estimates,
     )
     if not success:
         raise HTTPException(status_code=400, detail=msg)

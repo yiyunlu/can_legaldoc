@@ -285,13 +285,53 @@ This saves ~800 MB in image size.
 
 ---
 
+## Version Upgrade History
+
+When upgrading the deployed instance at `canlegal.ecomm101.cc`, follow these steps:
+
+### Standard Upgrade Procedure
+
+```bash
+cd /opt/canlii
+git pull
+docker compose up -d --build
+```
+
+### v5.0 → v5.1 (2025-02-17)
+
+**What changed:**
+- Mobile-responsive UI (hamburger menu, responsive grids)
+- New data source: Alberta King's Printer (`alberta_kings_printer`)
+- Smart limit distribution (proportional/equal/sequential modes)
+
+**Upgrade steps:**
+1. `cd /opt/canlii && git pull`
+2. `docker compose up -d --build`
+3. No DB migration needed — v4 schema supports new `source_type` values automatically
+
+**Verify:**
+```bash
+# Health check should return version 5.1
+curl http://localhost:8000/health
+
+# Should list 5 adapters (including alberta_kings_printer)
+docker exec canlii-platform python main_multi.py --list-sources
+
+# Test Alberta adapter
+docker exec canlii-platform python main_multi.py --source alberta_kings_printer --limit 5
+```
+
+---
+
 ## Verification Checklist
 
 - [ ] `curl http://localhost:8000/health` returns `{"status":"ok"}`
 - [ ] `curl http://localhost:8000/api/status` returns scraper status
 - [ ] `http://localhost:8000` in browser shows the React dashboard
 - [ ] All 4 pages load (Dashboard, Data Sources, Run History, Settings)
-- [ ] `https://canlii.your-domain.com` loads behind Cloudflare Access
+- [ ] Mobile layout works (resize browser or test on phone)
+- [ ] `https://canlegal.ecomm101.cc` loads behind Cloudflare Access
 - [ ] `docker exec canlii-platform python main_multi.py --list-sources` works
 - [ ] `systemctl list-timers | grep canlii` shows the daily timer
 - [ ] Run a test scrape from the Data Sources page (click "Run" on any source)
+- [ ] Alberta King's Printer source appears in Data Sources page

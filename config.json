@@ -43,6 +43,14 @@
       "params": {}
     },
     {
+      "source_type": "alberta_kings_printer",
+      "name": "Alberta Legislation (King's Printer)",
+      "jurisdiction": "ab",
+      "category": "Legislation",
+      "enabled": true,
+      "params": {}
+    },
+    {
       "source_type": "a2aj_case_law",
       "name": "A2AJ Case Law (Hugging Face)",
       "jurisdiction": "multi",

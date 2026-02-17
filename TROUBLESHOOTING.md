@@ -38,7 +38,7 @@
 保持 Chrome 窗口打开，在原来的终端中运行爬虫：
 
 ```bash
-cd /Volumes/Lexar_2T/Canada_DEV/CANLII_AB_legislation
+cd /Users/eddielu/Canada_DEV/CANLII_AB_legislation
 python3 main_playwright.py --limit 5 --cdp-url http://localhost:9222
 ```
 

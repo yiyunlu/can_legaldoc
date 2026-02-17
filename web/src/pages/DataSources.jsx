@@ -7,10 +7,11 @@ const JUR_NAMES = {
 };
 
 const SOURCE_META = {
-  justice_canada_xml: { label: 'XML', badge: 'badge-xml', total: '~5,795' },
-  bc_laws_api:        { label: 'API', badge: 'badge-api', total: '~882' },
-  a2aj_case_law:      { label: 'HF',  badge: 'badge-hf',  total: '~184,565' },
-  canlii_legacy:      { label: 'Web', badge: 'badge-web', total: 'varies' },
+  justice_canada_xml:    { label: 'XML', badge: 'badge-xml', total: '~5,795',   est: 5795 },
+  bc_laws_api:           { label: 'API', badge: 'badge-api', total: '~882',     est: 882 },
+  alberta_kings_printer: { label: 'GOV', badge: 'badge-gov', total: '~1,415',   est: 1415 },
+  a2aj_case_law:         { label: 'HF',  badge: 'badge-hf',  total: '~184,565', est: 184565 },
+  canlii_legacy:         { label: 'Web', badge: 'badge-web', total: 'varies',   est: 1000 },
 };
 
 export default function DataSources({ status, stats, onRefreshStats }) {
@@ -18,6 +19,7 @@ export default function DataSources({ status, stats, onRefreshStats }) {
   const [adapters, setAdapters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [scrapeLimit, setScrapeLimit] = useState(100);
+  const [distMode, setDistMode] = useState('proportional');
   const [message, setMessage] = useState(null);
 
   useEffect(() => {
@@ -54,8 +56,19 @@ export default function DataSources({ status, stats, onRefreshStats }) {
     setMessage(null);
     try {
       const enabledTypes = sources.filter(s => s.enabled).map(s => s.source_type);
-      await api.startMultiSource({ source_types: enabledTypes, scrape_limit: parseInt(scrapeLimit) || 100 });
-      setMessage({ type: 'success', text: `Started ${enabledTypes.length} sources` });
+      // Build source estimates from SOURCE_META
+      const estimates = {};
+      enabledTypes.forEach(st => {
+        const meta = SOURCE_META[st];
+        if (meta?.est) estimates[st] = meta.est;
+      });
+      await api.startMultiSource({
+        source_types: enabledTypes,
+        scrape_limit: parseInt(scrapeLimit) || 100,
+        distribution_mode: distMode,
+        source_estimates: estimates,
+      });
+      setMessage({ type: 'success', text: `Started ${enabledTypes.length} sources (${distMode})` });
     } catch (e) {
       setMessage({ type: 'error', text: e.message });
     }
@@ -78,8 +91,8 @@ export default function DataSources({ status, stats, onRefreshStats }) {
 
       {/* Controls bar */}
       <div className="card" style={{ marginBottom: 20 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div className="controls-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="controls-left" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <label style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Limit</label>
             <input
               className="input input-sm"
@@ -88,8 +101,19 @@ export default function DataSources({ status, stats, onRefreshStats }) {
               onChange={e => setScrapeLimit(e.target.value)}
               disabled={isRunning}
             />
+            <label style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Mode</label>
+            <select
+              className="select select-sm"
+              value={distMode}
+              onChange={e => setDistMode(e.target.value)}
+              disabled={isRunning}
+            >
+              <option value="proportional">Proportional</option>
+              <option value="equal">Equal</option>
+              <option value="sequential">Sequential</option>
+            </select>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div className="controls-right" style={{ display: 'flex', gap: 8 }}>
             {isRunning ? (
               <button className="btn btn-danger" onClick={handleStop}>Stop</button>
             ) : (

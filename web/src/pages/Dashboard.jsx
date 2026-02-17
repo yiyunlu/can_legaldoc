@@ -13,10 +13,11 @@ const JUR_COLORS = {
 };
 
 const SOURCE_META = {
-  justice_canada_xml: { label: 'XML',  badge: 'badge-xml', name: 'Federal Legislation' },
-  bc_laws_api:        { label: 'API',  badge: 'badge-api', name: 'BC Laws' },
-  a2aj_case_law:      { label: 'HF',   badge: 'badge-hf',  name: 'A2AJ Case Law' },
-  canlii_legacy:      { label: 'Web',  badge: 'badge-web', name: 'CanLII Legacy' },
+  justice_canada_xml:    { label: 'XML',  badge: 'badge-xml', name: 'Federal Legislation' },
+  bc_laws_api:           { label: 'API',  badge: 'badge-api', name: 'BC Laws' },
+  alberta_kings_printer: { label: 'GOV',  badge: 'badge-gov', name: 'Alberta Legislation' },
+  a2aj_case_law:         { label: 'HF',   badge: 'badge-hf',  name: 'A2AJ Case Law' },
+  canlii_legacy:         { label: 'Web',  badge: 'badge-web', name: 'CanLII Legacy' },
 };
 
 export default function Dashboard({ status, stats }) {
@@ -71,7 +72,7 @@ export default function Dashboard({ status, stats }) {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div className="dashboard-two-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         {/* Sources breakdown */}
         <div className="card">
           <div className="card-title" style={{ marginBottom: 16 }}>Documents by Source</div>

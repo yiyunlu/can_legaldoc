@@ -1,11 +1,25 @@
 const API_BASE = '/api';
 
+/* Track backend reachability to avoid console spam */
+let _backendOnline = true;
+export function isBackendOnline() { return _backendOnline; }
+
 async function request(url, options = {}) {
-    const res = await fetch(`${API_BASE}${url}`, options);
+    let res;
+    try {
+        res = await fetch(`${API_BASE}${url}`, options);
+    } catch (e) {
+        /* Network error (backend unreachable) — swallow to avoid console spam */
+        _backendOnline = false;
+        throw new Error('Backend unreachable');
+    }
     if (!res.ok) {
+        /* Proxy returns 500/502/503 when backend is down */
+        if (res.status >= 500) _backendOnline = false;
         const err = await res.json().catch(() => ({ detail: res.statusText }));
         throw new Error(err.detail || 'Request failed');
     }
+    _backendOnline = true;
     return res.json();
 }
 

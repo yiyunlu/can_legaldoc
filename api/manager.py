@@ -1,10 +1,20 @@
 import threading
 import time
-from typing import Optional, List
+from typing import Dict, Optional, List
 from utils.config import config
 from utils.logger import logger
 from scraper.supabase_client import SupabaseClient
 from utils.checkpoint import Checkpoint
+
+# Default estimated doc counts per source (used for proportional distribution)
+DEFAULT_ESTIMATES = {
+    'justice_canada_xml': 5795,
+    'bc_laws_api': 882,
+    'alberta_kings_printer': 1415,
+    'a2aj_case_law': 184565,
+    'canlii_legacy': 1000,
+}
+
 
 class ScraperManager:
     """
@@ -33,13 +43,17 @@ class ScraperManager:
         # Multi-source fields
         self.source_type_filter: Optional[str] = None
         self.source_types_filter: Optional[List[str]] = None
+        self.distribution_mode: str = "proportional"
+        self.source_estimates: Optional[Dict[str, int]] = None
 
         self._cleanup_stale_jobs()
 
     def start_scraping(self, engine: str = "fast", headless: bool = True,
                        cdp_url: Optional[str] = None, scrape_limit: int = 100,
                        source_type: Optional[str] = None,
-                       source_types: Optional[List[str]] = None):
+                       source_types: Optional[List[str]] = None,
+                       distribution_mode: Optional[str] = "proportional",
+                       source_estimates: Optional[Dict[str, int]] = None):
         if self.is_running:
             return False, "Scraper is already running"
 
@@ -49,6 +63,8 @@ class ScraperManager:
         self.scrape_limit = scrape_limit
         self.source_type_filter = source_type
         self.source_types_filter = source_types
+        self.distribution_mode = distribution_mode or "proportional"
+        self.source_estimates = source_estimates
         self.stats = {'total': 0, 'success': 0, 'failed': 0, 'skipped': 0}
         self.stop_event.clear()
         self.is_running = True
@@ -87,6 +103,64 @@ class ScraperManager:
         except Exception as e:
             logger.warning(f"Failed to cleanup stale jobs: {e}")
 
+    # ========== Limit Distribution ==========
+
+    def _calculate_source_limits(self, sources: list) -> Dict[str, Optional[int]]:
+        """Calculate per-source limits based on distribution_mode.
+
+        Modes:
+          - sequential: no per-source limit, global limit only (old behavior)
+          - equal: global limit split equally among sources
+          - proportional: balanced split using log-scaled estimates so large
+            sources don't monopolize the limit (e.g. 184K case law vs 882 BC laws)
+        """
+        if not self.scrape_limit:
+            return {s['source_type']: None for s in sources}
+
+        mode = self.distribution_mode
+        num_sources = len(sources)
+
+        if mode == "sequential" or num_sources <= 1:
+            # Old behavior: each source gets the full remaining limit
+            return {s['source_type']: None for s in sources}
+
+        if mode == "equal":
+            per_source = max(1, self.scrape_limit // num_sources)
+            limits = {s['source_type']: per_source for s in sources}
+            # Give leftover to first source
+            leftover = self.scrape_limit - (per_source * num_sources)
+            if leftover > 0:
+                limits[sources[0]['source_type']] += leftover
+            logger.info(f"Equal distribution: {limits}")
+            return limits
+
+        # proportional (default) — uses log-scale to balance large vs small sources
+        import math
+        estimates = self.source_estimates or DEFAULT_ESTIMATES
+        source_types = [s['source_type'] for s in sources]
+        est_totals = {st: estimates.get(st, 1000) for st in source_types}
+
+        # Log-scale the estimates to prevent one huge source from dominating
+        # log(1000)=6.9, log(5000)=8.5, log(185000)=12.1 — much more balanced
+        log_weights = {st: math.log(max(est, 10)) for st, est in est_totals.items()}
+        total_weight = sum(log_weights.values())
+
+        if total_weight == 0:
+            total_weight = len(source_types)
+
+        limits = {}
+        allocated = 0
+        for i, st in enumerate(source_types):
+            if i == len(source_types) - 1:
+                limits[st] = max(1, self.scrape_limit - allocated)
+            else:
+                share = max(1, int(self.scrape_limit * log_weights[st] / total_weight))
+                limits[st] = share
+                allocated += share
+
+        logger.info(f"Proportional distribution (log-scaled): {limits}")
+        return limits
+
     # ========== Multi-Source Run Loop ==========
 
     def _run_multi_source(self):
@@ -96,7 +170,8 @@ class ScraperManager:
             from scraper.adapters import get_adapter
 
             # Create job record
-            self._create_job_record("multi-source")
+            mode_label = f"multi-source ({self.distribution_mode})"
+            self._create_job_record(mode_label)
 
             # Filter sources
             sources = config.sources
@@ -113,6 +188,8 @@ class ScraperManager:
                 logger.warning("No enabled sources matching filter")
                 return
 
+            # Calculate per-source limits
+            source_limits = self._calculate_source_limits(sources)
             session_total = 0
 
             for source_cfg in sources:
@@ -123,9 +200,10 @@ class ScraperManager:
                     break
 
                 source_type = source_cfg['source_type']
+                per_source_limit = source_limits.get(source_type)
                 self.current_source = source_cfg.get('name', source_type)
                 self.current_target = self.current_source
-                logger.info(f"=== Starting source: {self.current_source} ({source_type}) ===")
+                logger.info(f"=== Starting source: {self.current_source} ({source_type}) | limit={per_source_limit} ===")
 
                 try:
                     adapter = get_adapter(source_type, **source_cfg.get('params', {}))
@@ -133,10 +211,16 @@ class ScraperManager:
                     logger.error(f"Failed to create adapter for {source_type}: {e}")
                     continue
 
-                # Discover
-                remaining = (self.scrape_limit - session_total) if self.scrape_limit else None
+                # Determine discovery limit
+                if per_source_limit is not None:
+                    discover_limit = per_source_limit
+                elif self.scrape_limit:
+                    discover_limit = self.scrape_limit - session_total
+                else:
+                    discover_limit = None
+
                 try:
-                    doc_list = adapter.discover_documents(limit=remaining)
+                    doc_list = adapter.discover_documents(limit=discover_limit)
                     logger.info(f"Discovered {len(doc_list)} documents from {source_type}")
                 except Exception as e:
                     logger.error(f"Discovery failed for {source_type}: {e}")
@@ -153,11 +237,19 @@ class ScraperManager:
                 if skipped:
                     logger.info(f"Skipped {skipped} already-processed documents")
 
+                # Determine fetch limit
+                fetch_limit = per_source_limit if per_source_limit is not None else (
+                    (self.scrape_limit - session_total) if self.scrape_limit else None
+                )
+                source_fetched = 0
+
                 # Fetch documents
                 for doc_content in adapter.fetch_documents_batch(
-                    to_fetch, limit=remaining, stop_event=self.stop_event
+                    to_fetch, limit=fetch_limit, stop_event=self.stop_event
                 ):
                     if self.stop_event.is_set():
+                        break
+                    if self.scrape_limit and session_total >= self.scrape_limit:
                         break
 
                     # Save to database
@@ -170,6 +262,7 @@ class ScraperManager:
                             self.stats['success'] += 1
                             self.checkpoint.add(doc_content.source_url)
                             session_total += 1
+                            source_fetched += 1
                         else:
                             self.stats['failed'] += 1
                     except Exception as e:
@@ -180,7 +273,7 @@ class ScraperManager:
                         self._update_job_stats()
 
                 self._update_job_stats()
-                logger.info(f"=== Finished source: {self.current_source} ===")
+                logger.info(f"=== Finished source: {self.current_source} | fetched={source_fetched} ===")
 
             self.message = "Finished"
         except Exception as e:

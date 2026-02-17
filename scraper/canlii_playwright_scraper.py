@@ -3,6 +3,7 @@
 绕过反爬虫机制
 """
 import os
+import random
 import subprocess
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 import threading
@@ -86,10 +87,12 @@ class CanLIIPlaywrightScraper:
                 java_script_enabled=True,
             )
         
-        # 添加性能优化：如果是 Headless，禁止加载图片和 CSS
-        if self.headless:
-            self.browser_context.route("**/*.{png,jpg,jpeg,gif,webp,css,woff,woff2,ttf}", lambda route: route.abort())
-            logger.info("已开启 Headless 性能优化：禁止加载图片、样式和字体资源。")
+        # 性能优化：禁止加载图片、字体、媒体资源（有头/无头都适用）
+        self.browser_context.route(
+            "**/*.{png,jpg,jpeg,gif,webp,svg,woff,woff2,ttf,otf,mp4,webm}",
+            lambda route: route.abort()
+        )
+        logger.info("已开启资源优化：禁止加载图片/字体/媒体资源。")
 
         # 添加 stealth 脚本 (如果不是 CDP)
         if not self.cdp_url or self.headless:
@@ -131,7 +134,7 @@ class CanLIIPlaywrightScraper:
     def _handle_captcha(self, page):
         """
         处理验证码逻辑
-        增加声音提醒和 15 秒人工干预倒计时
+        增加声音提醒 + 长时间冷却（10-15 分钟）后终止任务
         """
         if self.headless:
             logger.error("在无头模式下检测到验证码，无法自动通过。请切换到可视化模式并手动操作。")
@@ -146,38 +149,30 @@ class CanLIIPlaywrightScraper:
 
         logger.info("=" * 60)
         logger.info("🚨 检测到验证码！请在浏览器窗口手动完成验证。")
-        logger.info("⏳ 您有 15 秒的时间进行干预，超时将自动停止任务。")
+        logger.info("⏳ 将进入冷却期以降低风控概率，之后自动停止任务。")
         logger.info("=" * 60)
-        
-        # 2. 15 秒倒计时循环
-        timeout_seconds = 15
+
+        cooldown_seconds = random.randint(600, 900)
+        logger.warning(f"进入冷却期: {cooldown_seconds} 秒 (约 {cooldown_seconds // 60} 分钟)")
         start_time = time.time()
-        
         while True:
             elapsed = int(time.time() - start_time)
-            remaining = timeout_seconds - elapsed
-            
-            # 检查验证码是否消失
-            if not self._check_captcha(page):
-                logger.info("✅ 验证码疑似已手动通过，程序继续运行！")
-                return # 成功，退出处理函数
-            
-            # 检查是否超时
+            remaining = cooldown_seconds - elapsed
+
             if remaining <= 0:
-                logger.error("❌ 验证码人工干预超时 (15秒)，任务自动停止。")
-                raise Exception("CAPTCHA_TIMEOUT")
-            
-            # 检查停止信号
+                break
+
             if hasattr(self, 'stop_event') and self.stop_event and self.stop_event.is_set():
-                logger.info("验证码等待期间检测到停止信号，中断等待。")
+                logger.info("冷却期间检测到停止信号，中断等待。")
                 raise Exception("STOP_REQUESTED")
-            
-            # 每隔 1 秒打印一次倒计时 (每 5 秒或最后 5 秒)
-            if remaining > 0:
-                if remaining <= 5 or remaining % 5 == 0:
-                    logger.info(f"等待人工干预中... 剩余 {remaining} 秒")
-                    
-            time.sleep(1)
+
+            if remaining % 60 == 0:
+                logger.info(f"冷却中... 剩余 {remaining // 60} 分钟")
+
+            time.sleep(5)
+
+        logger.error("❌ 验证码触发后冷却期结束，任务自动停止，请稍后重启。")
+        raise Exception("CAPTCHA_COOLDOWN")
         
     def _fetch_page(self, url: str, wait_selector: str = None) -> Optional[str]:
         """使用现有的上下文获取网页内容"""
@@ -213,6 +208,7 @@ class CanLIIPlaywrightScraper:
             
             # 模拟微小的人类滚动动作
             page.evaluate("window.scrollBy(0, 100)")
+            page.wait_for_timeout(random.randint(800, 1800))
             
             content = page.content()
             return content
@@ -225,6 +221,8 @@ class CanLIIPlaywrightScraper:
             page.close()
             # 基础延迟
             time.sleep(config.REQUEST_DELAY)
+            # 随机抖动延迟，降低节奏规律性
+            time.sleep(random.uniform(1.5, 4.5))
     
     def fetch_statute_list(self, index_url: Optional[str] = None) -> List[Dict[str, str]]:
         """
@@ -420,6 +418,10 @@ class CanLIIPlaywrightScraper:
             # 3. 串行抓取 (保持稳定性)
             logger.info(f"开始爬取 {len(to_scrape)} 个新法规...")
             
+            # 随机化长休眠节奏
+            next_long_rest = random.randint(20, 30)
+            processed_since_rest = 0
+
             for i, statute in enumerate(to_scrape, 1):
                 if stop_event and stop_event.is_set():
                     logger.info("检测到停止信号，正在中断采集...")
@@ -429,9 +431,10 @@ class CanLIIPlaywrightScraper:
                 
                 try:
                     self.scrape_statute(statute, context=context)
+                    processed_since_rest += 1
                 except Exception as e:
-                    if "CAPTCHA_TIMEOUT" in str(e):
-                        logger.error("❌ 验证码人工干预超时，任务全量停止。")
+                    if "CAPTCHA_COOLDOWN" in str(e):
+                        logger.error("❌ 验证码触发冷却后停止，请稍后重启任务。")
                         break
                     if "CAPTCHA_DETECTED" in str(e):
                         logger.error("检测到验证码拦截，任务终止。请切换模式或手动处理后重试。")
@@ -440,6 +443,17 @@ class CanLIIPlaywrightScraper:
                         logger.info("由于停止请求，任务已提前终止。")
                         break
                     raise 
+
+                # 每条法规后随机小延迟
+                time.sleep(random.uniform(1.5, 4.5))
+
+                # 长休眠：每 20-30 条随机休眠 40-120 秒
+                if processed_since_rest >= next_long_rest:
+                    long_rest = random.randint(40, 120)
+                    logger.info(f"触发长休眠: {long_rest} 秒 (已处理 {processed_since_rest} 条)")
+                    time.sleep(long_rest)
+                    processed_since_rest = 0
+                    next_long_rest = random.randint(20, 30)
             
             # 显示统计信息
             self._print_stats()
