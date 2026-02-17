@@ -353,6 +353,86 @@ git pull
 docker compose up -d --build
 ```
 
+---
+
+### Upgrading from v5.1 → v5.4 (multi-version jump)
+
+If your deployed instance is running **v5.1** (Supabase-backed), this section covers everything needed to reach **v5.4** in one go. This combines the v5.2, v5.3, and v5.4 changes.
+
+**What changed since v5.1:**
+- **v5.2:** Database migrated from Supabase (cloud) to self-hosted PostgreSQL 16 (Docker). `SupabaseClient` replaced by `DatabaseClient`. `docker-compose.yml` now includes a `postgres` service.
+- **v5.3:** Built-in scheduler replaces external systemd/cron. New `scheduler_config` table. Supabase keepalive daemon. Jobs tagged with `[manual]`/`[scheduled]`.
+- **v5.4:** Document Browser page, paginated Run History with filtering/expandable logs, per-source "Last updated" timestamps on Dashboard, sidebar scheduler info.
+
+**Upgrade steps:**
+
+```bash
+# 1. Pull latest code
+cd /opt/canlii
+git pull
+
+# 2. Update .env — add POSTGRES_PASSWORD (required for new PostgreSQL container)
+#    Keep your existing SUPABASE_URL and SUPABASE_KEY for the migration step below
+echo "POSTGRES_PASSWORD=your_secure_password_here" >> .env
+
+# 3. Build and start (PostgreSQL container starts + auto-initializes schema)
+docker compose up -d --build
+
+# 4. Wait for containers to be healthy
+docker compose ps   # both canlii-postgres and canlii-platform should be "healthy"/"running"
+
+# 5. Migrate data from Supabase → local PostgreSQL
+docker exec canlii-platform python scripts/migrate_supabase_to_local.py
+
+# 6. Add performance index for paginated job queries
+docker exec canlii-postgres psql -U canlii -d canlii \
+  -c "CREATE INDEX IF NOT EXISTS idx_scrape_jobs_started_at ON scrape_jobs(started_at DESC);"
+
+# 7. (Optional) Disable old systemd timer if you had one
+systemctl disable canlii-daily-scrape.timer 2>/dev/null
+systemctl stop canlii-daily-scrape.timer 2>/dev/null
+```
+
+**Verify:**
+
+```bash
+# Health check — should return version 5.4
+curl http://localhost:8000/health
+
+# Verify document count matches what was in Supabase
+curl -s http://localhost:8000/api/sources/stats | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Total documents: {d[\"total_documents\"]}')
+print(f'By source: {d[\"by_source\"]}')
+print(f'Last updated: {d[\"last_updated_by_source\"]}')
+"
+
+# Scheduler config should exist (disabled by default)
+curl http://localhost:8000/api/scheduler
+
+# New endpoints should work
+curl "http://localhost:8000/api/jobs?page=1&per_page=5"
+curl "http://localhost:8000/api/documents?page=1&per_page=5"
+
+# Open browser — should show 5 tabs: Dashboard, Data Sources, Documents, Run History, Settings
+# Enable the built-in scheduler via Settings page if desired
+```
+
+**Post-migration cleanup:**
+
+Once you've verified all data migrated correctly, you can optionally remove the Supabase credentials from `.env`:
+```bash
+# Remove SUPABASE_URL and SUPABASE_KEY lines from .env (no longer needed)
+# The platform now runs entirely on local PostgreSQL
+```
+
+> **Note:** The Supabase free project will pause after 7 days of inactivity. If you want to keep it alive as a backup while you validate the migration, enable the Supabase Keepalive toggle in Settings → Scheduler before removing the credentials.
+
+---
+
+### Per-version changelog (for reference)
+
 ### v5.3 → v5.4 (2025-02-17)
 
 **What changed:**
