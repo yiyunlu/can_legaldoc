@@ -50,6 +50,26 @@ export const api = {
     updateSchedulerConfig: (cfg)   => post('/scheduler', cfg),
     triggerScheduledRun:   ()      => post('/scheduler/trigger', {}),
 
+    // Jobs (paginated history)
+    getJobs: (page = 1, perPage = 25, status = null) => {
+        let url = `/jobs?page=${page}&per_page=${perPage}`;
+        if (status) url += `&status=${status}`;
+        return request(url);
+    },
+
+    // Documents (paginated browser)
+    getDocuments: (params = {}) => {
+        const qs = new URLSearchParams();
+        if (params.page) qs.set('page', params.page);
+        if (params.per_page) qs.set('per_page', params.per_page);
+        if (params.source_type) qs.set('source_type', params.source_type);
+        if (params.jurisdiction) qs.set('jurisdiction', params.jurisdiction);
+        if (params.document_type) qs.set('document_type', params.document_type);
+        if (params.search) qs.set('search', params.search);
+        return request(`/documents?${qs.toString()}`);
+    },
+    getDocument: (id) => request(`/documents/${id}`),
+
     // Legacy (kept for backward compat)
     getConfig:            ()       => request('/config'),
     updateConfig:         (targets)=> post('/config', { targets }),

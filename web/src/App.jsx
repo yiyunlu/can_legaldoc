@@ -5,10 +5,12 @@ import Dashboard from './pages/Dashboard';
 import DataSources from './pages/DataSources';
 import RunHistory from './pages/RunHistory';
 import Settings from './pages/Settings';
+import Documents from './pages/Documents';
 
 const TABS = [
   { id: 'dashboard',  label: 'Dashboard',    icon: '\u2302' },
   { id: 'sources',    label: 'Data Sources',  icon: '\u29C9' },
+  { id: 'documents',  label: 'Documents',     icon: '\u2630' },
   { id: 'history',    label: 'Run History',   icon: '\u29D6' },
   { id: 'settings',   label: 'Settings',      icon: '\u2699' },
 ];
@@ -72,7 +74,7 @@ export default function App() {
       <nav className={`sidebar ${menuOpen ? 'open' : ''}`}>
         <div className="sidebar-brand">
           <h1>Canadian Legal Data</h1>
-          <div className="version">v5.3 Multi-Source Platform</div>
+          <div className="version">v5.4 Multi-Source Platform</div>
         </div>
 
         <div className="sidebar-nav">
@@ -101,6 +103,13 @@ export default function App() {
               {status.stats.success} done / {status.stats.total} total
             </div>
           )}
+          {!isRunning && status?.scheduler?.enabled && status?.scheduler?.next_run_at && (
+            <div className="status-detail" style={{ marginTop: 4, fontSize: 10, color: 'var(--text-muted)' }}>
+              ⏱ Next: {new Date(status.scheduler.next_run_at).toLocaleString('en-CA', {
+                month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+              })}
+            </div>
+          )}
         </div>
       </nav>
 
@@ -108,6 +117,7 @@ export default function App() {
       <main className="main-content">
         {tab === 'dashboard' && <Dashboard status={status} stats={stats} />}
         {tab === 'sources'   && <DataSources status={status} stats={stats} onRefreshStats={refreshStats} />}
+        {tab === 'documents' && <Documents stats={stats} />}
         {tab === 'history'   && <RunHistory stats={stats} />}
         {tab === 'settings'  && <Settings />}
       </main>

@@ -30,7 +30,7 @@ app.add_middleware(
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "Canadian Legal Data Platform", "version": "5.3"}
+    return {"status": "ok", "service": "Canadian Legal Data Platform", "version": "5.4"}
 
 
 # ========================================================================
@@ -151,6 +151,46 @@ def trigger_scheduler():
     if not success:
         raise HTTPException(status_code=400, detail=msg)
     return {"status": "triggered", "message": msg}
+
+
+# ---- Jobs (paginated history) ----
+
+@api_router.get("/jobs")
+def get_jobs(page: int = 1, per_page: int = 25, status: str = None):
+    """Get paginated job history with optional status filter."""
+    from scraper.db_client import DatabaseClient
+    db = DatabaseClient()
+    if per_page > 100:
+        per_page = 100
+    return db.get_jobs_paginated(page=page, per_page=per_page, status_filter=status)
+
+
+# ---- Documents (paginated browser) ----
+
+@api_router.get("/documents")
+def list_documents(page: int = 1, per_page: int = 50,
+                   source_type: str = None, jurisdiction: str = None,
+                   document_type: str = None, search: str = None):
+    """Paginated document listing with filters."""
+    from scraper.db_client import DatabaseClient
+    db = DatabaseClient()
+    if per_page > 100:
+        per_page = 100
+    return db.get_documents_paginated(
+        page=page, per_page=per_page,
+        source_type=source_type, jurisdiction=jurisdiction,
+        document_type=document_type, search=search
+    )
+
+@api_router.get("/documents/{doc_id}")
+def get_document(doc_id: str):
+    """Get document detail (metadata + version info)."""
+    from scraper.db_client import DatabaseClient
+    db = DatabaseClient()
+    doc = db.get_document_detail(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return doc
 
 
 # ---- Discovery (legacy CanLII) ----

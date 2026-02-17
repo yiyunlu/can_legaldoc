@@ -103,6 +103,7 @@ CREATE INDEX IF NOT EXISTS idx_documents_jurisdiction_source ON documents(jurisd
 CREATE INDEX IF NOT EXISTS idx_documents_jurisdiction_doctype ON documents(jurisdiction_code, document_type);
 CREATE INDEX IF NOT EXISTS idx_document_versions_latest ON document_versions(document_id) WHERE is_latest = true;
 CREATE INDEX IF NOT EXISTS idx_document_chunks_version ON document_chunks(version_id);
+CREATE INDEX IF NOT EXISTS idx_scrape_jobs_started_at ON scrape_jobs(started_at DESC);
 
 -- 8. Scheduler configuration (singleton row)
 CREATE TABLE IF NOT EXISTS scheduler_config (

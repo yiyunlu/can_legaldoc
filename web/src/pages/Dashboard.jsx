@@ -96,6 +96,13 @@ export default function Dashboard({ status, stats }) {
                     <div className="source-progress">
                       <div className="source-progress-bar" style={{ width: `${pct}%` }} />
                     </div>
+                    {stats.last_updated_by_source?.[key] && (
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+                        Last updated: {new Date(stats.last_updated_by_source[key]).toLocaleString('en-CA', {
+                          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
               })}

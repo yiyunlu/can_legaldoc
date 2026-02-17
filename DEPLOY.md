@@ -353,6 +353,40 @@ git pull
 docker compose up -d --build
 ```
 
+### v5.3 → v5.4 (2025-02-17)
+
+**What changed:**
+- New Document Browser page (5th tab: Documents) with paginated search, filtering, and inline detail
+- Run History upgraded from hardcoded 10-job view to paginated, filterable, with expandable logs
+- Dashboard shows per-source "Last updated" timestamps
+- Sidebar shows next scheduled run time when idle
+- 3 new API endpoints: `GET /api/jobs`, `GET /api/documents`, `GET /api/documents/{id}`
+- New DB index: `idx_scrape_jobs_started_at`
+
+**Upgrade steps:**
+1. `cd /opt/canlii && git pull`
+2. `docker compose up -d --build`
+3. No manual DB migration needed — new index auto-creates on fresh installs
+4. For existing installs, optionally add the index manually for better job query performance:
+   ```bash
+   docker exec canlii-postgres psql -U canlii -d canlii -c "CREATE INDEX IF NOT EXISTS idx_scrape_jobs_started_at ON scrape_jobs(started_at DESC);"
+   ```
+
+**Verify:**
+```bash
+# Health check should return version 5.4
+curl http://localhost:8000/health
+
+# Jobs endpoint should return paginated results
+curl "http://localhost:8000/api/jobs?page=1&per_page=5"
+
+# Documents endpoint should return paginated results
+curl "http://localhost:8000/api/documents?page=1&per_page=5"
+
+# Stats should include last_updated_by_source
+curl http://localhost:8000/api/sources/stats | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('last_updated_by_source',{}))"
+```
+
 ### v5.2 → v5.3 (2025-02-17)
 
 **What changed:**
@@ -445,11 +479,17 @@ docker exec canlii-platform python main_multi.py --source alberta_kings_printer 
 
 ## Verification Checklist
 
-- [ ] `curl http://localhost:8000/health` returns `{"status":"ok","version":"5.3"}`
+- [ ] `curl http://localhost:8000/health` returns `{"status":"ok","version":"5.4"}`
 - [ ] `curl http://localhost:8000/api/status` returns scraper status with `scheduler` field
 - [ ] `curl http://localhost:8000/api/scheduler` returns scheduler config
+- [ ] `curl http://localhost:8000/api/jobs?page=1&per_page=5` returns paginated jobs
+- [ ] `curl http://localhost:8000/api/documents?page=1&per_page=5` returns paginated documents
 - [ ] `http://localhost:8000` in browser shows the React dashboard
-- [ ] All 4 pages load (Dashboard, Data Sources, Run History, Settings)
+- [ ] All 5 pages load (Dashboard, Data Sources, Documents, Run History, Settings)
+- [ ] Documents page: search, filter by source/jurisdiction/type, pagination, click-to-expand detail
+- [ ] Run History: status filter, pagination, expandable logs
+- [ ] Dashboard shows "Last updated" timestamps under each source
+- [ ] Sidebar shows "Next: ..." when scheduler is enabled and scraper is idle
 - [ ] Settings page shows Scheduler card with enable toggle and schedule config
 - [ ] Mobile layout works (resize browser or test on phone)
 - [ ] `https://canlegal.ecomm101.cc` loads behind Cloudflare Access

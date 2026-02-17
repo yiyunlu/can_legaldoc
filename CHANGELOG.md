@@ -2,6 +2,43 @@
 
 All notable changes to the Canadian Legal Data Platform are documented here.
 
+## v5.4 — 2025-02-17
+
+### Added
+- **Document Browser page**: New "Documents" tab for browsing, searching, and filtering all ingested legal documents
+  - Paginated table with 50 docs per page
+  - Filter by source type, jurisdiction, document type
+  - Title search (debounced, uses PostgreSQL ILIKE)
+  - Inline detail expansion: click any row to see version info, content hash, metadata, content length
+  - External link to source URL for each document
+- **Paginated Run History**: Dedicated `/api/jobs` endpoint replaces hardcoded 10-job limit
+  - Status filter dropdown (All / Completed / Failed / Running)
+  - Prev/Next pagination with page indicator
+  - Expandable log details: click to view full job logs
+- **Per-source "Last Updated" timestamps** on Dashboard — shows when each data source was last scraped
+- **Sidebar scheduler info**: Shows next scheduled run time when scraper is idle and scheduler is enabled
+
+### Changed
+- Stats API (`/api/sources/stats`): now includes `last_updated_by_source` map with per-source timestamps
+- Run History: component now self-fetches from `/api/jobs` instead of relying on `stats.recent_jobs` (10-job limit)
+- Database: added `idx_scrape_jobs_started_at` index for paginated job queries
+
+### New API Endpoints
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/jobs` | Paginated job history with status filter |
+| GET | `/api/documents` | Paginated document listing with filters |
+| GET | `/api/documents/{id}` | Document detail with version info |
+
+### Deployment
+```bash
+cd /opt/canlii && git pull && docker compose up -d --build
+# New index auto-creates on fresh install; for existing: runs on next init.sql execution
+# No manual migration needed
+```
+
+---
+
 ## v5.3 — 2025-02-17
 
 ### Added

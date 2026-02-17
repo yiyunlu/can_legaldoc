@@ -234,6 +234,18 @@ class DatabaseClient:
                 """)
                 source_counts = {r['source_type']: r['cnt'] for r in cur.fetchall()}
 
+                # Per source_type last updated timestamps
+                cur.execute("""
+                    SELECT source_type, MAX(updated_at) AS last_updated
+                    FROM documents
+                    WHERE source_type IS NOT NULL
+                    GROUP BY source_type
+                """)
+                last_updated_by_source = {}
+                for r in cur.fetchall():
+                    val = r['last_updated']
+                    last_updated_by_source[r['source_type']] = val.isoformat() if hasattr(val, 'isoformat') else str(val)
+
                 # Per jurisdiction counts
                 cur.execute("""
                     SELECT d.jurisdiction_code, j.name, COUNT(*) AS cnt
@@ -278,6 +290,7 @@ class DatabaseClient:
                     "by_jurisdiction": jur_counts,
                     "by_type": type_counts,
                     "recent_jobs": recent_jobs,
+                    "last_updated_by_source": last_updated_by_source,
                 }
         except Exception as e:
             logger.error(f"Get source stats failed: {e}")
@@ -352,6 +365,138 @@ class DatabaseClient:
                     logger.info(f"Cleaned up {cur.rowcount} stale jobs")
         except Exception as e:
             logger.warning(f"Failed to cleanup stale jobs: {e}")
+
+    # ========== Paginated Queries (used by API endpoints) ==========
+
+    def _serialize_row(self, row: Dict) -> Dict:
+        """Convert UUIDs and datetimes to JSON-safe strings."""
+        result = dict(row)
+        for k, v in result.items():
+            if hasattr(v, 'isoformat'):
+                result[k] = v.isoformat()
+            elif hasattr(v, 'hex'):  # UUID
+                result[k] = str(v)
+        return result
+
+    def get_jobs_paginated(self, page: int = 1, per_page: int = 25,
+                           status_filter: str = None) -> Dict:
+        """Get paginated scrape jobs with optional status filter."""
+        try:
+            with self._get_conn() as conn:
+                cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+                where_clause = ""
+                params = []
+                if status_filter and status_filter in ('completed', 'failed', 'running'):
+                    where_clause = "WHERE status = %s"
+                    params.append(status_filter)
+
+                # Count total
+                cur.execute(f"SELECT COUNT(*) AS cnt FROM scrape_jobs {where_clause}", params)
+                total = cur.fetchone()['cnt']
+
+                # Fetch page
+                offset = (page - 1) * per_page
+                cur.execute(f"""
+                    SELECT * FROM scrape_jobs
+                    {where_clause}
+                    ORDER BY started_at DESC NULLS LAST
+                    LIMIT %s OFFSET %s
+                """, params + [per_page, offset])
+
+                jobs = [self._serialize_row(r) for r in cur.fetchall()]
+
+                return {
+                    "jobs": jobs,
+                    "total": total,
+                    "page": page,
+                    "per_page": per_page,
+                    "total_pages": max(1, -(-total // per_page)),
+                }
+        except Exception as e:
+            logger.error(f"Get jobs paginated failed: {e}")
+            return {"jobs": [], "total": 0, "page": 1, "per_page": per_page, "total_pages": 0}
+
+    def get_documents_paginated(self, page: int = 1, per_page: int = 50,
+                                source_type: str = None,
+                                jurisdiction: str = None,
+                                document_type: str = None,
+                                search: str = None) -> Dict:
+        """Get paginated documents with filtering and title search."""
+        try:
+            with self._get_conn() as conn:
+                cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+                conditions = []
+                params = []
+
+                if source_type:
+                    conditions.append("source_type = %s")
+                    params.append(source_type)
+                if jurisdiction:
+                    conditions.append("jurisdiction_code = %s")
+                    params.append(jurisdiction)
+                if document_type:
+                    conditions.append("document_type = %s")
+                    params.append(document_type)
+                if search:
+                    conditions.append("title ILIKE %s")
+                    params.append(f"%{search}%")
+
+                where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+                # Count total matching
+                cur.execute(f"SELECT COUNT(*) AS cnt FROM documents {where_clause}", params)
+                total = cur.fetchone()['cnt']
+
+                # Fetch page (exclude large content columns)
+                offset = (page - 1) * per_page
+                cur.execute(f"""
+                    SELECT id, title, citation, source_url, jurisdiction_code,
+                           source_type, document_type, category, is_active,
+                           created_at, updated_at
+                    FROM documents
+                    {where_clause}
+                    ORDER BY updated_at DESC
+                    LIMIT %s OFFSET %s
+                """, params + [per_page, offset])
+
+                docs = [self._serialize_row(r) for r in cur.fetchall()]
+
+                return {
+                    "documents": docs,
+                    "total": total,
+                    "page": page,
+                    "per_page": per_page,
+                    "total_pages": max(1, -(-total // per_page)),
+                }
+        except Exception as e:
+            logger.error(f"Get documents paginated failed: {e}")
+            return {"documents": [], "total": 0, "page": 1, "per_page": per_page, "total_pages": 0}
+
+    def get_document_detail(self, doc_id: str) -> Optional[Dict]:
+        """Get document metadata + latest version info (no full content)."""
+        try:
+            with self._get_conn() as conn:
+                cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cur.execute("""
+                    SELECT d.id, d.title, d.citation, d.source_url, d.jurisdiction_code,
+                           d.source_type, d.document_type, d.category, d.is_active,
+                           d.metadata, d.created_at, d.updated_at,
+                           dv.version_number, dv.scraped_at, dv.content_hash,
+                           length(dv.content_text) AS content_length
+                    FROM documents d
+                    LEFT JOIN document_versions dv
+                        ON d.id = dv.document_id AND dv.is_latest = true
+                    WHERE d.id = %s
+                """, (doc_id,))
+                row = cur.fetchone()
+                if not row:
+                    return None
+                return self._serialize_row(row)
+        except Exception as e:
+            logger.error(f"Get document detail failed: {e}")
+            return None
 
     # ========== Jurisdiction Helpers ==========
 
