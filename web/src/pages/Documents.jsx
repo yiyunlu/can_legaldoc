@@ -166,7 +166,7 @@ export default function Documents({ stats }) {
                 <th>Type</th>
                 <th>Source</th>
                 <th>Updated</th>
-                <th style={{ width: 40 }}></th>
+                <th style={{ width: 60 }}></th>
               </tr>
             </thead>
             <tbody>
@@ -200,13 +200,24 @@ export default function Documents({ stats }) {
                         {formatDate(doc.updated_at)}
                       </td>
                       <td>
-                        {doc.source_url && (
-                          <a href={doc.source_url} target="_blank" rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            title="Open source" style={{ color: 'var(--accent)', fontSize: 14 }}>
-                            ↗
-                          </a>
-                        )}
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end' }}>
+                          {doc.has_content ? (
+                            <span title="Content stored locally" style={{ color: 'var(--success)', fontSize: 13, lineHeight: 1 }}>
+                              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3zm0 4.5a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-2zm1 3.5a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1H3z"/><circle cx="12" cy="4" r="1" fill="var(--bg-card)"/><circle cx="12" cy="8.5" r="1" fill="var(--bg-card)"/><circle cx="12" cy="13" r="1" fill="var(--bg-card)"/></svg>
+                            </span>
+                          ) : (
+                            <span title="No local content" style={{ color: 'var(--text-muted)', fontSize: 13, lineHeight: 1, opacity: 0.4 }}>
+                              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3zm0 4.5a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-2zm1 3.5a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1H3z"/><circle cx="12" cy="4" r="1" fill="var(--bg-card)"/><circle cx="12" cy="8.5" r="1" fill="var(--bg-card)"/><circle cx="12" cy="13" r="1" fill="var(--bg-card)"/></svg>
+                            </span>
+                          )}
+                          {doc.source_url && (
+                            <a href={doc.source_url} target="_blank" rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              title="Open original source" style={{ color: 'var(--accent)', fontSize: 14 }}>
+                              ↗
+                            </a>
+                          )}
+                        </div>
                       </td>
                     </tr>
                     {expandedId === doc.id && (
@@ -220,9 +231,19 @@ export default function Documents({ stats }) {
                                 <div><strong>Citation:</strong> {detail.citation || '--'}</div>
                                 <div><strong>Active:</strong> {detail.is_active ? 'Yes' : 'No'}</div>
                                 <div><strong>Version:</strong> {detail.version_number ?? '--'}</div>
-                                <div><strong>Content Length:</strong> {detail.content_length ? `${(detail.content_length / 1024).toFixed(1)} KB` : '--'}</div>
-                                <div><strong>Content Hash:</strong> <span style={{ fontFamily: 'monospace', fontSize: 10 }}>{detail.content_hash ? detail.content_hash.substring(0, 16) + '...' : '--'}</span></div>
                                 <div><strong>Last Scraped:</strong> {formatDate(detail.scraped_at)}</div>
+                                <div>
+                                  <strong>Local Storage:</strong>{' '}
+                                  {detail.has_content ? (
+                                    <span style={{ color: 'var(--success)' }}>
+                                      Text ({detail.content_length ? `${(detail.content_length / 1024).toFixed(1)} KB` : '--'})
+                                      {detail.has_html && <span> + HTML ({detail.content_html_length ? `${(detail.content_html_length / 1024).toFixed(1)} KB` : ''})</span>}
+                                    </span>
+                                  ) : (
+                                    <span style={{ color: 'var(--text-muted)' }}>Not stored</span>
+                                  )}
+                                </div>
+                                <div><strong>Content Hash:</strong> <span style={{ fontFamily: 'monospace', fontSize: 10 }}>{detail.content_hash ? detail.content_hash.substring(0, 16) + '...' : '--'}</span></div>
                                 <div><strong>Created:</strong> {formatDate(detail.created_at)}</div>
                                 <div><strong>Source URL:</strong> {detail.source_url ? (
                                   <a href={detail.source_url} target="_blank" rel="noopener noreferrer"

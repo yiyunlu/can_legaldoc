@@ -3,7 +3,9 @@ import { api } from '../api';
 
 const JUR_NAMES = {
   ca: 'Federal', bc: 'British Columbia', ab: 'Alberta', on: 'Ontario',
-  qc: 'Quebec', multi: 'All Jurisdictions',
+  qc: 'Quebec', ns: 'Nova Scotia', nb: 'New Brunswick', mb: 'Manitoba',
+  pe: 'PEI', sk: 'Saskatchewan', nl: 'Newfoundland', yt: 'Yukon',
+  nt: 'NWT', nu: 'Nunavut', multi: 'All Jurisdictions',
 };
 
 const SOURCE_META = {
@@ -12,6 +14,11 @@ const SOURCE_META = {
   alberta_kings_printer: { label: 'GOV', badge: 'badge-gov', total: '~1,415',   est: 1415 },
   a2aj_case_law:         { label: 'HF',  badge: 'badge-hf',  total: '~184,565', est: 184565 },
   canlii_legacy:         { label: 'Web', badge: 'badge-web', total: 'varies',   est: 1000 },
+  manitoba_laws:         { label: 'GOV', badge: 'badge-gov', total: '~1,926',   est: 1926 },
+  newfoundland_laws:     { label: 'GOV', badge: 'badge-gov', total: '~2,105',   est: 2105 },
+  nova_scotia_laws:      { label: 'GOV', badge: 'badge-gov', total: '~790',     est: 790 },
+  new_brunswick_laws:    { label: 'GOV', badge: 'badge-gov', total: '~1,560',   est: 1560 },
+  ontario_elaws:         { label: 'GOV', badge: 'badge-gov', total: '~4,400',   est: 4400 },
 };
 
 export default function DataSources({ status, stats, onRefreshStats }) {

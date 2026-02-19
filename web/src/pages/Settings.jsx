@@ -11,13 +11,15 @@ export default function Settings() {
   const [sched, setSched] = useState(null);
   const [schedSaved, setSchedSaved] = useState(false);
   const [schedTriggering, setSchedTriggering] = useState(false);
+  const [platformVersion, setPlatformVersion] = useState(null);
 
   useEffect(() => {
-    Promise.all([api.getSources(), api.getAvailableAdapters(), api.getSchedulerConfig()])
-      .then(([srcRes, adpRes, schedRes]) => {
+    Promise.all([api.getSources(), api.getAvailableAdapters(), api.getSchedulerConfig(), api.getHealth()])
+      .then(([srcRes, adpRes, schedRes, healthRes]) => {
         setSources(srcRes.sources || []);
         setAdapters(adpRes.adapters || []);
         setSched(schedRes || {});
+        if (healthRes?.version) setPlatformVersion(healthRes.version);
       })
       .catch(e => console.error(e))
       .finally(() => setLoading(false));
@@ -330,7 +332,7 @@ export default function Settings() {
         <div className="card-title" style={{ marginBottom: 12 }}>System Information</div>
         <div className="settings-row">
           <div className="settings-label">Platform Version</div>
-          <div style={{ fontWeight: 600 }}>v5.3</div>
+          <div style={{ fontWeight: 600 }}>{platformVersion ? `v${platformVersion}` : '—'}</div>
         </div>
         <div className="settings-row">
           <div className="settings-label">Registered Adapters</div>

@@ -32,6 +32,9 @@ function post(url, body) {
 }
 
 export const api = {
+    // Health / version (uses /health which is outside /api prefix)
+    getHealth:            ()       => fetch('/health').then(r => r.ok ? r.json() : null).catch(() => null),
+
     // Status
     getStatus:            ()       => request('/status'),
     getSourceStats:       ()       => request('/sources/stats'),

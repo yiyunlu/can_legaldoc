@@ -431,33 +431,38 @@ class DatabaseClient:
                 params = []
 
                 if source_type:
-                    conditions.append("source_type = %s")
+                    conditions.append("d.source_type = %s")
                     params.append(source_type)
                 if jurisdiction:
-                    conditions.append("jurisdiction_code = %s")
+                    conditions.append("d.jurisdiction_code = %s")
                     params.append(jurisdiction)
                 if document_type:
-                    conditions.append("document_type = %s")
+                    conditions.append("d.document_type = %s")
                     params.append(document_type)
                 if search:
-                    conditions.append("title ILIKE %s")
+                    conditions.append("d.title ILIKE %s")
                     params.append(f"%{search}%")
 
                 where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
                 # Count total matching
-                cur.execute(f"SELECT COUNT(*) AS cnt FROM documents {where_clause}", params)
+                cur.execute(f"SELECT COUNT(*) AS cnt FROM documents d {where_clause}", params)
                 total = cur.fetchone()['cnt']
 
-                # Fetch page (exclude large content columns)
+                # Fetch page (exclude large content columns, add has_content flag)
                 offset = (page - 1) * per_page
                 cur.execute(f"""
-                    SELECT id, title, citation, source_url, jurisdiction_code,
-                           source_type, document_type, category, is_active,
-                           created_at, updated_at
-                    FROM documents
+                    SELECT d.id, d.title, d.citation, d.source_url, d.jurisdiction_code,
+                           d.source_type, d.document_type, d.category, d.is_active,
+                           d.created_at, d.updated_at,
+                           EXISTS(
+                               SELECT 1 FROM document_versions dv
+                               WHERE dv.document_id = d.id AND dv.is_latest = true
+                                 AND (dv.content_text IS NOT NULL AND dv.content_text != '')
+                           ) AS has_content
+                    FROM documents d
                     {where_clause}
-                    ORDER BY updated_at DESC
+                    ORDER BY d.updated_at DESC
                     LIMIT %s OFFSET %s
                 """, params + [per_page, offset])
 
@@ -484,7 +489,10 @@ class DatabaseClient:
                            d.source_type, d.document_type, d.category, d.is_active,
                            d.metadata, d.created_at, d.updated_at,
                            dv.version_number, dv.scraped_at, dv.content_hash,
-                           length(dv.content_text) AS content_length
+                           length(dv.content_text) AS content_length,
+                           length(dv.content_html) AS content_html_length,
+                           COALESCE(dv.content_text IS NOT NULL AND dv.content_text != '', false) AS has_content,
+                           COALESCE(dv.content_html IS NOT NULL AND dv.content_html != '', false) AS has_html
                     FROM documents d
                     LEFT JOIN document_versions dv
                         ON d.id = dv.document_id AND dv.is_latest = true
