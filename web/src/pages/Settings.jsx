@@ -1,6 +1,93 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api';
 
+/* ── Helper: format diagnostics JSON into a readable plain-text report ── */
+function formatDiagReport(d) {
+  const lines = [];
+  const hr = '─'.repeat(60);
+  lines.push(`Canadian Legal Data Platform — Database Diagnostic Report`);
+  lines.push(`Generated: ${d.generated_at}`);
+  lines.push(`Database Size: ${d.db_size}`);
+  lines.push(`Checkpoint File: ${d.checkpoint_size}`);
+  lines.push(hr);
+
+  // Table sizes
+  lines.push('');
+  lines.push('TABLE SIZES');
+  lines.push(pad('Table', 22) + pad('Rows', 10) + pad('Data', 12) + pad('Index', 12) + 'Total');
+  lines.push('─'.repeat(68));
+  for (const t of d.tables || []) {
+    lines.push(
+      pad(t.table_name, 22) +
+      pad(String(t.row_count), 10) +
+      pad(t.data_size, 12) +
+      pad(t.index_size, 12) +
+      t.total_size
+    );
+  }
+
+  // Content storage
+  const cs = d.content_stats || {};
+  lines.push('');
+  lines.push(hr);
+  lines.push('CONTENT STORAGE');
+  lines.push(`  Total versions: ${cs.total_versions ?? 0}  (latest: ${cs.latest_versions ?? 0})`);
+  lines.push(`  With text: ${cs.with_text ?? 0}  |  With HTML: ${cs.with_html ?? 0}  |  Empty shells: ${cs.empty_shells ?? 0}`);
+  lines.push(`  Text size: ${cs.total_text_size ?? '0 bytes'}  |  HTML size: ${cs.total_html_size ?? '0 bytes'}`);
+  lines.push(`  Documents without any version: ${d.docs_without_versions ?? 0}`);
+
+  // By source
+  lines.push('');
+  lines.push(hr);
+  lines.push('DOCUMENTS BY SOURCE');
+  for (const s of d.docs_by_source || []) {
+    lines.push(`  ${pad(s.source_type, 28)} ${s.count}`);
+  }
+
+  // By jurisdiction
+  lines.push('');
+  lines.push(hr);
+  lines.push('DOCUMENTS BY JURISDICTION');
+  for (const j of d.docs_by_jurisdiction || []) {
+    lines.push(`  ${pad(j.name || j.jurisdiction_code, 28)} ${j.count}`);
+  }
+
+  // By type
+  lines.push('');
+  lines.push(hr);
+  lines.push('DOCUMENTS BY TYPE');
+  for (const t of d.docs_by_type || []) {
+    lines.push(`  ${pad(t.document_type, 28)} ${t.count}`);
+  }
+
+  // Recent jobs
+  lines.push('');
+  lines.push(hr);
+  lines.push('RECENT JOBS (last 10)');
+  for (const j of d.recent_jobs || []) {
+    const dur = j.duration_secs != null ? `${j.duration_secs}s` : '—';
+    const ts = j.started_at ? j.started_at.replace('T', ' ').slice(0, 19) : '—';
+    lines.push(`  ${ts}  ${pad(j.status, 10)}  scraped:${j.items_scraped} failed:${j.items_failed}  (${dur})`);
+  }
+
+  // Indexes
+  lines.push('');
+  lines.push(hr);
+  lines.push('INDEXES');
+  for (const idx of d.indexes || []) {
+    lines.push(`  ${pad(idx.indexname, 44)} ${pad(idx.tablename, 22)} ${idx.size}`);
+  }
+
+  lines.push('');
+  lines.push(hr);
+  return lines.join('\n');
+}
+
+function pad(s, n) {
+  s = String(s || '');
+  return s.length >= n ? s : s + ' '.repeat(n - s.length);
+}
+
 export default function Settings() {
   const [sources, setSources] = useState([]);
   const [adapters, setAdapters] = useState([]);
@@ -12,6 +99,12 @@ export default function Settings() {
   const [schedSaved, setSchedSaved] = useState(false);
   const [schedTriggering, setSchedTriggering] = useState(false);
   const [platformVersion, setPlatformVersion] = useState(null);
+
+  // Database diagnostics state
+  const [diagReport, setDiagReport] = useState(null);
+  const [diagLoading, setDiagLoading] = useState(false);
+  const [diagError, setDiagError] = useState(null);
+  const [diagCopied, setDiagCopied] = useState(false);
 
   useEffect(() => {
     Promise.all([api.getSources(), api.getAvailableAdapters(), api.getSchedulerConfig(), api.getHealth()])
@@ -87,6 +180,30 @@ export default function Settings() {
     } catch {
       return iso;
     }
+  };
+
+  // --- Database Diagnostics helpers ---
+  const runDiagnostics = async () => {
+    setDiagLoading(true);
+    setDiagError(null);
+    setDiagReport(null);
+    setDiagCopied(false);
+    try {
+      const data = await api.getDbDiagnostics();
+      setDiagReport(formatDiagReport(data));
+    } catch (e) {
+      setDiagError(e.message || 'Failed to run diagnostics');
+    } finally {
+      setDiagLoading(false);
+    }
+  };
+
+  const copyDiagReport = () => {
+    if (!diagReport) return;
+    navigator.clipboard.writeText(diagReport).then(() => {
+      setDiagCopied(true);
+      setTimeout(() => setDiagCopied(false), 2000);
+    });
   };
 
   if (loading) return <div style={{ padding: 20, color: 'var(--text-muted)' }}>Loading...</div>;
@@ -346,6 +463,61 @@ export default function Settings() {
           <div className="settings-label">Backend API</div>
           <div style={{ fontWeight: 600, fontFamily: 'monospace', fontSize: 12 }}>http://localhost:8000</div>
         </div>
+      </div>
+
+      {/* ── Database Diagnostics ── */}
+      <div className="card">
+        <div className="card-header">
+          <div className="card-title">Database Diagnostics</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {diagReport && (
+              <button className="btn btn-ghost btn-sm" onClick={copyDiagReport}>
+                {diagCopied ? 'Copied!' : 'Copy Report'}
+              </button>
+            )}
+            <button
+              className="btn btn-sm"
+              style={{ background: 'var(--info)', color: '#fff' }}
+              onClick={runDiagnostics}
+              disabled={diagLoading}
+            >
+              {diagLoading ? 'Running...' : 'Run Diagnostic'}
+            </button>
+          </div>
+        </div>
+
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+          Run a full database health check. The report can be copied and shared with developers for debugging.
+        </div>
+
+        {diagError && (
+          <div className="alert alert-error" style={{ marginBottom: 12 }}>{diagError}</div>
+        )}
+
+        {diagReport && (
+          <pre style={{
+            background: 'var(--bg-input)',
+            padding: 16,
+            borderRadius: 'var(--radius)',
+            fontSize: 11,
+            fontFamily: "'SF Mono', 'Fira Code', 'Consolas', monospace",
+            whiteSpace: 'pre',
+            overflowX: 'auto',
+            maxHeight: 500,
+            overflowY: 'auto',
+            color: 'var(--text-secondary)',
+            lineHeight: 1.5,
+            border: '1px solid var(--border)',
+          }}>
+            {diagReport}
+          </pre>
+        )}
+
+        {!diagReport && !diagError && !diagLoading && (
+          <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)', fontSize: 12 }}>
+            Click "Run Diagnostic" to generate a database health report
+          </div>
+        )}
       </div>
 
       {/* Adapter Registry */}

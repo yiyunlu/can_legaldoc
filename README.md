@@ -69,7 +69,7 @@ curl http://localhost:8000/health
 | **Data Sources** | 数据源管理：启用/禁用、触发采集、配置分发模式 |
 | **Documents** | 文档浏览器：搜索、按来源/辖区/类型筛选、分页、本地存储状态图标、点击展开详情（含 Text/HTML 存储大小） |
 | **Run History** | 运行历史：状态筛选（完成/失败/运行中）、分页、展开查看完整日志 |
-| **Settings** | 设置：内置调度器（每日/间隔）、Supabase Keepalive、限额与分发模式、系统信息（动态版本号） |
+| **Settings** | 设置：内置调度器（每日/间隔）、Supabase Keepalive、限额与分发模式、系统信息（动态版本号）、数据库诊断（一键生成报告 + 复制） |
 
 ---
 
@@ -279,6 +279,7 @@ curl -X POST http://localhost:8000/api/scheduler/trigger \
 | GET | `/api/jobs` | 分页查询运行历史 |
 | GET | `/api/documents` | 分页查询文档列表（支持搜索/筛选） |
 | GET | `/api/documents/{id}` | 文档详情（元数据 + 版本信息） |
+| GET | `/api/debug/db` | 数据库诊断报告（表大小、行数、内容统计、索引） |
 
 ---
 

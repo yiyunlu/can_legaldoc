@@ -16,6 +16,8 @@ All notable changes to the Canadian Legal Data Platform are documented here.
 - **API `GET /api/documents`**: Now returns `has_content` boolean flag per document
 - **API `GET /api/documents/{id}`**: Now returns `has_content`, `has_html`, `content_html_length` fields
 - SQL: `COALESCE` wrapping for LEFT JOIN null safety on boolean fields
+- **Settings page — Database Diagnostics**: New "Run Diagnostic" button generates a comprehensive database health report (table sizes, row counts, content storage stats, documents by source/jurisdiction/type, recent jobs, index info, checkpoint size). Report displays in a monospace `<pre>` block with "Copy Report" button for easy sharing with developers
+- **API `GET /api/debug/db`**: New endpoint returning full database diagnostics as JSON
 
 ---
 

@@ -652,6 +652,7 @@ docker exec canlii-platform python main_multi.py --source-type alberta_kings_pri
 - [ ] Active Sources count matches configured sources
 - [ ] Scheduler card: enable toggle, schedule config, Run Now button work
 - [ ] Adapter Registry table lists all 10 adapters with "Yes" for configured ones
+- [ ] Database Diagnostics: "Run Diagnostic" button generates report, "Copy Report" copies to clipboard
 
 ### Infrastructure
 - [ ] Sidebar shows "v5.5 Multi-Source Platform"

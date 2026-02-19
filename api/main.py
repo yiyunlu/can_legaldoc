@@ -193,6 +193,19 @@ def get_document(doc_id: str):
     return doc
 
 
+# ---- Database Diagnostics ----
+
+@api_router.get("/debug/db")
+def get_db_diagnostics():
+    """Run comprehensive database diagnostics for debugging."""
+    from scraper.db_client import DatabaseClient
+    db = DatabaseClient()
+    try:
+        return db.get_db_diagnostics()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ---- Discovery (legacy CanLII) ----
 
 @api_router.get("/discovery/explore")

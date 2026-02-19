@@ -73,6 +73,9 @@ export const api = {
     },
     getDocument: (id) => request(`/documents/${id}`),
 
+    // Database diagnostics
+    getDbDiagnostics:     ()       => request('/debug/db'),
+
     // Legacy (kept for backward compat)
     getConfig:            ()       => request('/config'),
     updateConfig:         (targets)=> post('/config', { targets }),

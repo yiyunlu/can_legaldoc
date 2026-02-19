@@ -506,6 +506,130 @@ class DatabaseClient:
             logger.error(f"Get document detail failed: {e}")
             return None
 
+    # ========== Database Diagnostics ==========
+
+    def get_db_diagnostics(self) -> Dict:
+        """Run comprehensive database diagnostics — returns a structured report."""
+        try:
+            with self._get_conn() as conn:
+                cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                report = {}
+
+                # 1. Database size
+                cur.execute("SELECT pg_size_pretty(pg_database_size(current_database())) AS db_size")
+                report['db_size'] = cur.fetchone()['db_size']
+
+                # 2. Table row counts + sizes
+                table_info = []
+                for tbl in ('documents', 'document_versions', 'document_chunks', 'scrape_jobs', 'scrape_targets', 'scheduler_config', 'jurisdictions'):
+                    cur.execute(f"""
+                        SELECT
+                            '{tbl}' AS table_name,
+                            (SELECT COUNT(*) FROM {tbl}) AS row_count,
+                            pg_size_pretty(pg_total_relation_size('{tbl}')) AS total_size,
+                            pg_size_pretty(pg_relation_size('{tbl}')) AS data_size,
+                            pg_size_pretty(pg_total_relation_size('{tbl}') - pg_relation_size('{tbl}')) AS index_size
+                    """)
+                    table_info.append(dict(cur.fetchone()))
+                report['tables'] = table_info
+
+                # 3. Documents by source_type
+                cur.execute("""
+                    SELECT source_type, COUNT(*) AS count
+                    FROM documents
+                    GROUP BY source_type
+                    ORDER BY count DESC
+                """)
+                report['docs_by_source'] = [dict(r) for r in cur.fetchall()]
+
+                # 4. Documents by jurisdiction
+                cur.execute("""
+                    SELECT d.jurisdiction_code, j.name, COUNT(*) AS count
+                    FROM documents d
+                    LEFT JOIN jurisdictions j ON d.jurisdiction_code = j.code
+                    GROUP BY d.jurisdiction_code, j.name
+                    ORDER BY count DESC
+                """)
+                report['docs_by_jurisdiction'] = [dict(r) for r in cur.fetchall()]
+
+                # 5. Documents by document_type
+                cur.execute("""
+                    SELECT document_type, COUNT(*) AS count
+                    FROM documents
+                    GROUP BY document_type
+                    ORDER BY count DESC
+                """)
+                report['docs_by_type'] = [dict(r) for r in cur.fetchall()]
+
+                # 6. Content storage stats
+                cur.execute("""
+                    SELECT
+                        COUNT(*) AS total_versions,
+                        COUNT(*) FILTER (WHERE content_text IS NOT NULL AND content_text != '') AS with_text,
+                        COUNT(*) FILTER (WHERE content_html IS NOT NULL AND content_html != '') AS with_html,
+                        COUNT(*) FILTER (WHERE (content_text IS NULL OR content_text = '') AND (content_html IS NULL OR content_html = '')) AS empty_shells,
+                        pg_size_pretty(COALESCE(SUM(length(content_text)), 0)::bigint) AS total_text_size,
+                        pg_size_pretty(COALESCE(SUM(length(content_html)), 0)::bigint) AS total_html_size,
+                        COUNT(*) FILTER (WHERE is_latest = true) AS latest_versions
+                    FROM document_versions
+                """)
+                row = cur.fetchone()
+                report['content_stats'] = dict(row) if row else {}
+
+                # 7. Documents without any version (empty metadata-only rows)
+                cur.execute("""
+                    SELECT COUNT(*) AS count
+                    FROM documents d
+                    WHERE NOT EXISTS (SELECT 1 FROM document_versions dv WHERE dv.document_id = d.id)
+                """)
+                report['docs_without_versions'] = cur.fetchone()['count']
+
+                # 8. Recent scrape jobs (last 10)
+                cur.execute("""
+                    SELECT id, status, items_scraped, items_failed,
+                           started_at, finished_at,
+                           CASE WHEN finished_at IS NOT NULL AND started_at IS NOT NULL
+                                THEN EXTRACT(EPOCH FROM (finished_at - started_at))::int
+                                ELSE NULL END AS duration_secs,
+                           LEFT(logs, 120) AS log_preview
+                    FROM scrape_jobs
+                    ORDER BY started_at DESC NULLS LAST
+                    LIMIT 10
+                """)
+                report['recent_jobs'] = [self._serialize_row(r) for r in cur.fetchall()]
+
+                # 9. Index info
+                cur.execute("""
+                    SELECT indexname, tablename,
+                           pg_size_pretty(pg_relation_size(indexname::regclass)) AS size
+                    FROM pg_indexes
+                    WHERE schemaname = 'public'
+                    ORDER BY pg_relation_size(indexname::regclass) DESC
+                """)
+                report['indexes'] = [dict(r) for r in cur.fetchall()]
+
+                # 10. Checkpoint info (SQLite — just report file size if exists)
+                import pathlib
+                cp_path = pathlib.Path('checkpoint.db')
+                if cp_path.exists():
+                    size_bytes = cp_path.stat().st_size
+                    if size_bytes > 1024 * 1024:
+                        report['checkpoint_size'] = f"{size_bytes / (1024*1024):.1f} MB"
+                    else:
+                        report['checkpoint_size'] = f"{size_bytes / 1024:.1f} KB"
+                else:
+                    report['checkpoint_size'] = 'Not found'
+
+                # 11. Generated at timestamp
+                cur.execute("SELECT now() AT TIME ZONE 'UTC' AS generated_at")
+                report['generated_at'] = cur.fetchone()['generated_at'].isoformat() + 'Z'
+
+                return report
+
+        except Exception as e:
+            logger.error(f"DB diagnostics failed: {e}")
+            raise
+
     # ========== Jurisdiction Helpers ==========
 
     def ensure_jurisdiction(self, code: str, name: str = None):
