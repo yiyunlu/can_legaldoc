@@ -442,6 +442,9 @@ Once you've verified all data migrated correctly, you can optionally remove the 
 - Adapter count doubles: 5 → 10 registered adapters
 - All adapters use HTTP APIs — no headless browser required
 - Dashboard + Documents pages updated with new source metadata
+- Documents page: local storage indicator icon per row (green = content stored, gray = empty)
+- Settings page: version now fetched dynamically from `/health` API
+- Data Sources page: all 10 adapters show correct badges and available counts
 
 **Upgrade steps:**
 1. `cd /opt/canlii && git pull`
@@ -608,24 +611,50 @@ docker exec canlii-platform python main_multi.py --source-type alberta_kings_pri
 
 ## Verification Checklist
 
+### API & Backend
 - [ ] `curl http://localhost:8000/health` returns `{"status":"ok","version":"5.5"}`
 - [ ] `curl http://localhost:8000/api/status` returns scraper status with `scheduler` field
 - [ ] `curl http://localhost:8000/api/scheduler` returns scheduler config
 - [ ] `curl http://localhost:8000/api/jobs?page=1&per_page=5` returns paginated jobs
-- [ ] `curl http://localhost:8000/api/documents?page=1&per_page=5` returns paginated documents
+- [ ] `curl http://localhost:8000/api/documents?page=1&per_page=5` returns paginated documents with `has_content` field
+- [ ] `docker exec canlii-platform python main_multi.py --list-sources` works
+- [ ] `docker exec canlii-platform python scripts/post_upgrade_check.py` passes all checks
+
+### Web UI — Dashboard
 - [ ] `http://localhost:8000` in browser shows the React dashboard
-- [ ] All 5 pages load (Dashboard, Data Sources, Documents, Run History, Settings)
-- [ ] Documents page: search, filter by source/jurisdiction/type, pagination, click-to-expand detail
-- [ ] Run History: status filter, pagination, expandable logs
-- [ ] Dashboard shows "Last updated" timestamps under each source
+- [ ] Total documents, legislation, regulations, case law counts display correctly
+- [ ] "Documents by Source" shows all active sources with progress bars
+- [ ] "Documents by Jurisdiction" shows correct province names (not raw codes)
+- [ ] "Last updated" timestamps appear under each source
+
+### Web UI — Data Sources
+- [ ] All 10 data sources visible (including MB, NL, NS, NB, ON)
+- [ ] All sources show correct badge (XML/API/GOV/HF/Web) — no `?` badges
+- [ ] All sources show estimated AVAILABLE count — no `?` values
+- [ ] Jurisdiction names display as full names (e.g., "Manitoba" not "mb")
+- [ ] Run a test scrape (click "Run" on any source)
+- [ ] "Run All" button works with limit and distribution mode
+
+### Web UI — Documents
+- [ ] Search, filter by source/jurisdiction/type, pagination all work
+- [ ] Local storage icon (green server = stored, gray = empty) appears per row
+- [ ] Click-to-expand detail shows "Local Storage: Text (X KB) + HTML (Y KB)" or "Not stored"
+- [ ] External link (↗) opens original source URL in new tab
+
+### Web UI — Run History
+- [ ] Status filter (All/Completed/Failed/Running), pagination work
+- [ ] Expandable logs show full job output
+- [ ] Scheduled jobs appear with `[scheduled]` tag
+
+### Web UI — Settings
+- [ ] Platform Version shows correct version (e.g., `v5.5`) — fetched from API, not hardcoded
+- [ ] Registered Adapters count shows 10
+- [ ] Active Sources count matches configured sources
+- [ ] Scheduler card: enable toggle, schedule config, Run Now button work
+- [ ] Adapter Registry table lists all 10 adapters with "Yes" for configured ones
+
+### Infrastructure
+- [ ] Sidebar shows "v5.5 Multi-Source Platform"
 - [ ] Sidebar shows "Next: ..." when scheduler is enabled and scraper is idle
-- [ ] Settings page shows Scheduler card with enable toggle and schedule config
 - [ ] Mobile layout works (resize browser or test on phone)
 - [ ] `https://canlegal.ecomm101.cc` loads behind Cloudflare Access
-- [ ] `docker exec canlii-platform python main_multi.py --list-sources` works
-- [ ] Run a test scrape from the Data Sources page (click "Run" on any source)
-- [ ] Scheduler "Run Now" button triggers a scrape
-- [ ] Scheduled jobs appear in Run History with `[scheduled]` tag
-- [ ] Alberta King's Printer source appears in Data Sources page
-- [ ] All 10 data sources visible on Data Sources page (including MB, NL, NS, NB, ON)
-- [ ] `docker exec canlii-platform python scripts/post_upgrade_check.py` passes all checks

@@ -85,6 +85,27 @@ docker exec canlii-platform curl -s "https://open.alberta.ca/api/3/action/packag
 docker exec canlii-platform curl -s "https://kings-printer.alberta.ca" | head -20
 ```
 
+### 新省份适配器采集失败 (MB, NL, NS, NB, ON)
+
+所有 5 个新适配器均使用 HTTP API / HTML 爬取，不需要 Playwright。常见问题：
+
+```bash
+# 测试某个新适配器的发现功能
+docker exec canlii-platform python main_multi.py --source-type ontario_elaws --dry-run --limit 5
+
+# 检查网络连通性
+docker exec canlii-platform curl -s "https://www.ontario.ca/laws" | head -20
+docker exec canlii-platform curl -s "https://web2.gov.mb.ca/laws/statutes/" | head -20
+docker exec canlii-platform curl -s "https://www.assembly.nl.ca/legislation/sr/" | head -20
+docker exec canlii-platform curl -s "https://laws.gnb.ca/en/depotlegal" | head -20
+docker exec canlii-platform curl -s "https://www.nslegislature.ca/legc/statutes/" | head -20
+```
+
+如果 Ontario e-Laws 返回空结果，可能是 REST API 端点变更。检查：
+```bash
+docker exec canlii-platform curl -s "https://www.ontario.ca/laws/api/v2/legislation/en/browse-search?offset=0&limit=5" | python3 -m json.tool | head -20
+```
+
 ### 断点记录导致文档被跳过
 
 SQLite 断点记录了已采集的 URL。如果需要重新采集：

@@ -2,6 +2,23 @@
 
 All notable changes to the Canadian Legal Data Platform are documented here.
 
+## v5.5.1 — 2025-02-18
+
+### Fixed (UI)
+- **Settings page**: Platform Version now fetched from `/health` API instead of hardcoded `v5.3`
+- **Data Sources page**: 5 new adapters (MB, NL, NS, NB, ON) now show correct `GOV` badge and estimated available counts instead of `?`
+- **Data Sources page**: Full jurisdiction names for all 13 provinces/territories instead of raw codes
+- **Vite dev proxy**: Added `/health` route so version fetch works in development mode
+
+### Added (UI)
+- **Documents page — local storage indicator**: Each document row shows a server icon (green = content stored locally, gray = no content). Uses `EXISTS` subquery on `document_versions` for performance
+- **Documents page — enhanced detail panel**: Expanded document detail now shows "Local Storage: Text (X KB) + HTML (Y KB)" with green/gray status
+- **API `GET /api/documents`**: Now returns `has_content` boolean flag per document
+- **API `GET /api/documents/{id}`**: Now returns `has_content`, `has_html`, `content_html_length` fields
+- SQL: `COALESCE` wrapping for LEFT JOIN null safety on boolean fields
+
+---
+
 ## v5.5 — 2025-02-18
 
 ### Added
