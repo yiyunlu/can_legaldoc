@@ -2,6 +2,30 @@
 
 All notable changes to the Canadian Legal Data Platform are documented here.
 
+## v5.7 — 2025-02-19
+
+### Added
+- **3 remaining provincial legislation adapters** — completes coverage for all 10 Canadian provinces:
+  - **Saskatchewan** (`saskatchewan_laws`): ~1,160 statutes & regulations via REST API from `publications.saskatchewan.ca` (King's Printer Freelaw API, PDF-only)
+  - **Prince Edward Island** (`pei_laws`): ~850 statutes & regulations from `princeedwardisland.ca` (single listing page, PDF-only)
+  - **Quebec** (`quebec_laws`): ~4,700 statutes & regulations from `legisquebec.gouv.qc.ca` (Cyberlex platform, server-rendered HTML)
+- Saskatchewan adapter uses Publications Saskatchewan REST API (`/api/v1/freelaw/acts`) for structured discovery + PDF download
+- Quebec adapter parses HTML content from the `LegislativeDocument` container (no headless browser needed)
+
+### Changed
+- Adapter count: 13 → 16 registered adapters
+- `config.json`: 3 new data source entries (saskatchewan_laws, pei_laws, quebec_laws — all enabled)
+- Dashboard, Documents, Data Sources pages: `SOURCE_META` updated with 3 new provincial sources
+- Data Sources page: estimated document counts for SK (~1,160), PE (~850), QC (~4,700)
+
+### Deployment
+```bash
+cd /opt/canlii && git pull && docker compose up -d --build
+# No database migration needed — existing schema supports new source_type values
+```
+
+---
+
 ## v5.6 — 2025-02-19
 
 ### Added

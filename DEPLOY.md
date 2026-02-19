@@ -134,7 +134,7 @@ Verify locally:
 ```bash
 # Health check
 curl http://localhost:8000/health
-# → {"status":"ok","service":"Canadian Legal Data Platform","version":"5.6"}
+# → {"status":"ok","service":"Canadian Legal Data Platform","version":"5.7"}
 
 # API status
 curl http://localhost:8000/api/status
@@ -327,7 +327,7 @@ docker compose start app
 
 ### Skip Playwright (smaller image)
 
-If you only use the multi-source adapters that don't require a headless browser (12 of 13 v5.6 adapters use HTTP APIs or PDF downloads) and don't need the legacy CanLII deep scraper:
+If you only use the multi-source adapters that don't require a headless browser (15 of 16 v5.7 adapters use HTTP APIs, HTML scraping, or PDF downloads) and don't need the legacy CanLII deep scraper:
 
 ```yaml
 # In docker-compose.yml, change:
@@ -355,9 +355,9 @@ docker compose up -d --build
 
 ---
 
-### Upgrading from v5.1 → v5.6 (multi-version jump)
+### Upgrading from v5.1 → v5.7 (multi-version jump)
 
-If your deployed instance is running **v5.1** (Supabase-backed), this section covers everything needed to reach **v5.6** in one go. This combines the v5.2, v5.3, v5.4, v5.5, and v5.6 changes.
+If your deployed instance is running **v5.1** (Supabase-backed), this section covers everything needed to reach **v5.7** in one go. This combines the v5.2, v5.3, v5.4, v5.5, v5.6, and v5.7 changes.
 
 **What changed since v5.1:**
 - **v5.2:** Database migrated from Supabase (cloud) to self-hosted PostgreSQL 16 (Docker). `SupabaseClient` replaced by `DatabaseClient`. `docker-compose.yml` now includes a `postgres` service.
@@ -365,6 +365,7 @@ If your deployed instance is running **v5.1** (Supabase-backed), this section co
 - **v5.4:** Document Browser page, paginated Run History with filtering/expandable logs, per-source "Last updated" timestamps on Dashboard, sidebar scheduler info.
 - **v5.5:** 5 new provincial adapters (MB, NL, NB, NS, ON). All use HTTP APIs (Ontario via reverse-engineered REST API). Adapter count 5 → 10.
 - **v5.6:** 3 northern territory adapters (YT, NT, NU). PDF-based legislation via PyMuPDF text extraction. Adapter count 10 → 13.
+- **v5.7:** 3 remaining provincial adapters (SK, PE, QC). Saskatchewan via REST API + PDF, PEI via PDF, Quebec via HTML. Adapter count 13 → 16. Complete coverage of all 10 provinces + 3 territories.
 
 **Upgrade steps:**
 
@@ -434,6 +435,33 @@ Once you've verified all data migrated correctly, you can optionally remove the 
 ---
 
 ### Per-version changelog (for reference)
+
+### v5.6 → v5.7 (2025-02-19)
+
+**What changed:**
+- 3 remaining provincial legislation adapters: Saskatchewan, PEI, Quebec
+- Saskatchewan adapter uses Publications Saskatchewan REST API (`/api/v1/freelaw/acts`) for structured discovery + PDF download
+- PEI adapter scrapes single listing page with all ~850 PDF links
+- Quebec adapter parses HTML from LegisQuebec Cyberlex platform (server-rendered, no headless browser needed)
+- Adapter count: 13 → 16 registered adapters
+- Complete coverage of all 10 Canadian provinces + 3 territories
+
+**Upgrade steps:**
+1. `cd /opt/canlii && git pull`
+2. `docker compose down && docker compose up -d --build`
+3. No database migration needed — existing schema supports new `source_type` values
+
+**Verify:**
+```bash
+# Health check should return version 5.7
+curl http://localhost:8000/health
+
+# Should list 16 adapters
+curl http://localhost:8000/api/sources/available
+
+# Test new adapters (dry run)
+docker exec canlii-platform python main_multi.py --source-type quebec_laws --dry-run --limit 5
+```
 
 ### v5.5 → v5.6 (2025-02-19)
 
@@ -640,7 +668,7 @@ docker exec canlii-platform python main_multi.py --source-type alberta_kings_pri
 ## Verification Checklist
 
 ### API & Backend
-- [ ] `curl http://localhost:8000/health` returns `{"status":"ok","version":"5.6"}`
+- [ ] `curl http://localhost:8000/health` returns `{"status":"ok","version":"5.7"}`
 - [ ] `curl http://localhost:8000/api/status` returns scraper status with `scheduler` field
 - [ ] `curl http://localhost:8000/api/scheduler` returns scheduler config
 - [ ] `curl http://localhost:8000/api/jobs?page=1&per_page=5` returns paginated jobs
@@ -656,7 +684,7 @@ docker exec canlii-platform python main_multi.py --source-type alberta_kings_pri
 - [ ] "Last updated" timestamps appear under each source
 
 ### Web UI — Data Sources
-- [ ] All 13 data sources visible (including MB, NL, NS, NB, ON, YT, NT, NU)
+- [ ] All 16 data sources visible (including MB, NL, NS, NB, ON, YT, NT, NU, SK, PE, QC)
 - [ ] All sources show correct badge (XML/API/GOV/HF/Web) — no `?` badges
 - [ ] All sources show estimated AVAILABLE count — no `?` values
 - [ ] Jurisdiction names display as full names (e.g., "Manitoba" not "mb")
@@ -675,15 +703,15 @@ docker exec canlii-platform python main_multi.py --source-type alberta_kings_pri
 - [ ] Scheduled jobs appear with `[scheduled]` tag
 
 ### Web UI — Settings
-- [ ] Platform Version shows correct version (e.g., `v5.6`) — fetched from API, not hardcoded
-- [ ] Registered Adapters count shows 13
+- [ ] Platform Version shows correct version (e.g., `v5.7`) — fetched from API, not hardcoded
+- [ ] Registered Adapters count shows 16
 - [ ] Active Sources count matches configured sources
 - [ ] Scheduler card: enable toggle, schedule config, Run Now button work
-- [ ] Adapter Registry table lists all 13 adapters with "Yes" for configured ones
+- [ ] Adapter Registry table lists all 16 adapters with "Yes" for configured ones
 - [ ] Database Diagnostics: "Run Diagnostic" button generates report, "Copy Report" copies to clipboard
 
 ### Infrastructure
-- [ ] Sidebar shows "v5.6 Multi-Source Platform"
+- [ ] Sidebar shows "v5.7 Multi-Source Platform"
 - [ ] Sidebar shows "Next: ..." when scheduler is enabled and scraper is idle
 - [ ] Mobile layout works (resize browser or test on phone)
 - [ ] `https://canlegal.ecomm101.cc` loads behind Cloudflare Access

@@ -22,6 +22,9 @@ const SOURCE_META = {
   yukon_laws:            { label: 'GOV', badge: 'badge-gov', total: '~200',     est: 200 },
   nwt_laws:              { label: 'GOV', badge: 'badge-gov', total: '~300',     est: 300 },
   nunavut_laws:          { label: 'GOV', badge: 'badge-gov', total: '~250',     est: 250 },
+  saskatchewan_laws:     { label: 'API', badge: 'badge-api', total: '~1,160',   est: 1160 },
+  pei_laws:              { label: 'GOV', badge: 'badge-gov', total: '~850',     est: 850 },
+  quebec_laws:           { label: 'GOV', badge: 'badge-gov', total: '~4,700',   est: 4700 },
 };
 
 export default function DataSources({ status, stats, onRefreshStats }) {

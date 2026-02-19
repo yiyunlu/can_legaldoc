@@ -124,6 +124,30 @@
       "category": "Legislation",
       "enabled": true,
       "params": {}
+    },
+    {
+      "source_type": "saskatchewan_laws",
+      "name": "Saskatchewan Legislation (King's Printer)",
+      "jurisdiction": "sk",
+      "category": "Legislation",
+      "enabled": true,
+      "params": {}
+    },
+    {
+      "source_type": "pei_laws",
+      "name": "PEI Legislation",
+      "jurisdiction": "pe",
+      "category": "Legislation",
+      "enabled": true,
+      "params": {}
+    },
+    {
+      "source_type": "quebec_laws",
+      "name": "Legis Québec",
+      "jurisdiction": "qc",
+      "category": "Legislation",
+      "enabled": true,
+      "params": {}
     }
   ]
 }
