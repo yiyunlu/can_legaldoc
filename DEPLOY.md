@@ -445,23 +445,42 @@ Once you've verified all data migrated correctly, you can optionally remove the 
 
 **Upgrade steps:**
 1. `cd /opt/canlii && git pull`
-2. `docker compose up -d --build`
-3. No database migration needed — existing schema supports new `source_type` values
+2. (Optional) Pre-upgrade diagnostic and cleanup:
+   ```bash
+   # Diagnose existing data issues
+   docker exec canlii-platform python scripts/pre_upgrade_check.py
+   # Fix empty shells, normalize URLs, sync checkpoint (dry-run first!)
+   docker cp scripts/fix_before_upgrade.py canlii-platform:/app/scripts/
+   docker exec canlii-platform python scripts/fix_before_upgrade.py --dry-run
+   docker exec canlii-platform python scripts/fix_before_upgrade.py
+   ```
+3. `docker compose down && docker compose up -d --build`
+4. No database migration needed — existing schema supports new `source_type` values
 
 **Verify:**
 ```bash
-# Health check should return version 5.5
+# Automated post-upgrade check (15 items: version, adapters, DB, config, discovery)
+docker exec canlii-platform python scripts/post_upgrade_check.py
+
+# Or manual checks:
 curl http://localhost:8000/health
+# → {"status":"ok","version":"5.5"}
 
 # Should list 10 adapters
 curl http://localhost:8000/api/sources/available
 
 # Test a new adapter (dry run)
 docker exec canlii-platform python main_multi.py --source-type manitoba_laws --dry-run --limit 5
-
-# Test Ontario adapter (uses REST API, no Playwright needed)
-docker exec canlii-platform python main_multi.py --source-type ontario_elaws --dry-run --limit 3
 ```
+
+**Operations scripts (included in v5.5):**
+
+| Script | Purpose | When to use |
+|--------|---------|-------------|
+| `scripts/pre_upgrade_check.py` | Pre-upgrade diagnostic + JSON snapshot | Before upgrading (v5.4 compatible) |
+| `scripts/fix_before_upgrade.py` | Delete empty shells, normalize URLs, sync checkpoint | Before upgrading (supports `--dry-run`) |
+| `scripts/post_upgrade_check.py` | Verify upgrade success (15 automated checks) | After upgrading |
+| `scripts/db_health_check.py` | Ongoing database health monitoring | Anytime |
 
 ### v5.3 → v5.4 (2025-02-17)
 
