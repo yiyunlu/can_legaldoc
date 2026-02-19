@@ -58,6 +58,11 @@ def _ensure_adapters_loaded():
         'scraper.adapters.alberta_kings_printer',
         'scraper.adapters.a2aj_case_law',
         'scraper.adapters.canlii_legacy',
+        'scraper.adapters.manitoba_laws',
+        'scraper.adapters.newfoundland_laws',
+        'scraper.adapters.nova_scotia_laws',
+        'scraper.adapters.new_brunswick_laws',
+        'scraper.adapters.ontario_elaws',
     ]
     for mod_name in adapter_modules:
         try:

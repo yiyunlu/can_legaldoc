@@ -7,6 +7,11 @@ const SOURCE_META = {
   alberta_kings_printer: { label: 'GOV',  badge: 'badge-gov', name: 'Alberta Legislation' },
   a2aj_case_law:         { label: 'HF',   badge: 'badge-hf',  name: 'A2AJ Case Law' },
   canlii_legacy:         { label: 'Web',  badge: 'badge-web', name: 'CanLII Legacy' },
+  manitoba_laws:         { label: 'GOV',  badge: 'badge-gov', name: 'Manitoba Laws' },
+  newfoundland_laws:     { label: 'GOV',  badge: 'badge-gov', name: 'NL Laws' },
+  nova_scotia_laws:      { label: 'GOV',  badge: 'badge-gov', name: 'NS Laws' },
+  new_brunswick_laws:    { label: 'GOV',  badge: 'badge-gov', name: 'NB Laws' },
+  ontario_elaws:         { label: 'GOV',  badge: 'badge-gov', name: 'Ontario e-Laws' },
 };
 
 const JUR_NAMES = {

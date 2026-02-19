@@ -134,7 +134,7 @@ Verify locally:
 ```bash
 # Health check
 curl http://localhost:8000/health
-# → {"status":"ok","service":"Canadian Legal Data Platform","version":"5.4"}
+# → {"status":"ok","service":"Canadian Legal Data Platform","version":"5.5"}
 
 # API status
 curl http://localhost:8000/api/status
@@ -327,7 +327,7 @@ docker compose start app
 
 ### Skip Playwright (smaller image)
 
-If you only use the multi-source adapters (XML, API, HuggingFace) and don't need the legacy CanLII deep scraper:
+If you only use the multi-source adapters (all 10 v5.5 adapters use HTTP APIs) and don't need the legacy CanLII deep scraper:
 
 ```yaml
 # In docker-compose.yml, change:
@@ -355,14 +355,15 @@ docker compose up -d --build
 
 ---
 
-### Upgrading from v5.1 → v5.4 (multi-version jump)
+### Upgrading from v5.1 → v5.5 (multi-version jump)
 
-If your deployed instance is running **v5.1** (Supabase-backed), this section covers everything needed to reach **v5.4** in one go. This combines the v5.2, v5.3, and v5.4 changes.
+If your deployed instance is running **v5.1** (Supabase-backed), this section covers everything needed to reach **v5.5** in one go. This combines the v5.2, v5.3, v5.4, and v5.5 changes.
 
 **What changed since v5.1:**
 - **v5.2:** Database migrated from Supabase (cloud) to self-hosted PostgreSQL 16 (Docker). `SupabaseClient` replaced by `DatabaseClient`. `docker-compose.yml` now includes a `postgres` service.
 - **v5.3:** Built-in scheduler replaces external systemd/cron. New `scheduler_config` table. Supabase keepalive daemon. Jobs tagged with `[manual]`/`[scheduled]`.
 - **v5.4:** Document Browser page, paginated Run History with filtering/expandable logs, per-source "Last updated" timestamps on Dashboard, sidebar scheduler info.
+- **v5.5:** 5 new provincial adapters (MB, NL, NB, NS, ON). Ontario uses Playwright headless browser. Adapter count 5 → 10.
 
 **Upgrade steps:**
 
@@ -396,7 +397,7 @@ systemctl stop canlii-daily-scrape.timer 2>/dev/null
 **Verify:**
 
 ```bash
-# Health check — should return version 5.4
+# Health check — should return version 5.5
 curl http://localhost:8000/health
 
 # Verify document count matches what was in Supabase
@@ -432,6 +433,35 @@ Once you've verified all data migrated correctly, you can optionally remove the 
 ---
 
 ### Per-version changelog (for reference)
+
+### v5.4 → v5.5 (2025-02-18)
+
+**What changed:**
+- 5 new provincial legislation adapters: Manitoba, Newfoundland & Labrador, New Brunswick, Nova Scotia, Ontario
+- Ontario adapter uses reverse-engineered REST API (no Playwright needed despite React SPA)
+- Adapter count doubles: 5 → 10 registered adapters
+- All adapters use HTTP APIs — no headless browser required
+- Dashboard + Documents pages updated with new source metadata
+
+**Upgrade steps:**
+1. `cd /opt/canlii && git pull`
+2. `docker compose up -d --build`
+3. No database migration needed — existing schema supports new `source_type` values
+
+**Verify:**
+```bash
+# Health check should return version 5.5
+curl http://localhost:8000/health
+
+# Should list 10 adapters
+curl http://localhost:8000/api/sources/available
+
+# Test a new adapter (dry run)
+docker exec canlii-platform python main_multi.py --source-type manitoba_laws --dry-run --limit 5
+
+# Test Ontario adapter (uses REST API, no Playwright needed)
+docker exec canlii-platform python main_multi.py --source-type ontario_elaws --dry-run --limit 3
+```
 
 ### v5.3 → v5.4 (2025-02-17)
 
@@ -559,7 +589,7 @@ docker exec canlii-platform python main_multi.py --source alberta_kings_printer 
 
 ## Verification Checklist
 
-- [ ] `curl http://localhost:8000/health` returns `{"status":"ok","version":"5.4"}`
+- [ ] `curl http://localhost:8000/health` returns `{"status":"ok","version":"5.5"}`
 - [ ] `curl http://localhost:8000/api/status` returns scraper status with `scheduler` field
 - [ ] `curl http://localhost:8000/api/scheduler` returns scheduler config
 - [ ] `curl http://localhost:8000/api/jobs?page=1&per_page=5` returns paginated jobs

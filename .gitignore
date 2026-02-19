@@ -42,5 +42,8 @@ checkpoint.db
 discovery_cache.json
 sample_pages/
 
+# Playwright MCP debug artifacts
+.playwright-mcp/
+
 # Local data (cloned repos, downloaded datasets)
 data/

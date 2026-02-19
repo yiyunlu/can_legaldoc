@@ -30,7 +30,7 @@ app.add_middleware(
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "Canadian Legal Data Platform", "version": "5.4"}
+    return {"status": "ok", "service": "Canadian Legal Data Platform", "version": "5.5"}
 
 
 # ========================================================================

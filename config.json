@@ -60,6 +60,46 @@
         "dataset_name": "a2aj/canadian-case-law",
         "streaming": true
       }
+    },
+    {
+      "source_type": "manitoba_laws",
+      "name": "Manitoba Legislation (CCSM)",
+      "jurisdiction": "mb",
+      "category": "Legislation",
+      "enabled": true,
+      "params": {}
+    },
+    {
+      "source_type": "newfoundland_laws",
+      "name": "NL Legislation (Assembly)",
+      "jurisdiction": "nl",
+      "category": "Legislation",
+      "enabled": true,
+      "params": {}
+    },
+    {
+      "source_type": "nova_scotia_laws",
+      "name": "NS Legislation (Legislature)",
+      "jurisdiction": "ns",
+      "category": "Legislation",
+      "enabled": true,
+      "params": {}
+    },
+    {
+      "source_type": "new_brunswick_laws",
+      "name": "NB Legislation (Irosoft)",
+      "jurisdiction": "nb",
+      "category": "Legislation",
+      "enabled": true,
+      "params": {}
+    },
+    {
+      "source_type": "ontario_elaws",
+      "name": "Ontario e-Laws",
+      "jurisdiction": "on",
+      "category": "Legislation",
+      "enabled": true,
+      "params": {}
     }
   ]
 }

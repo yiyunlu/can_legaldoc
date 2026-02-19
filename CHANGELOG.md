@@ -2,6 +2,32 @@
 
 All notable changes to the Canadian Legal Data Platform are documented here.
 
+## v5.5 — 2025-02-18
+
+### Added
+- **5 new provincial legislation adapters** — expands coverage from 4 jurisdictions to 9:
+  - **Manitoba** (`manitoba_laws`): ~1,926 statutes & regulations from `web2.gov.mb.ca/laws` (OpenMB Licence)
+  - **Newfoundland & Labrador** (`newfoundland_laws`): ~2,105 statutes & regulations from `assembly.nl.ca` (Crown copyright)
+  - **New Brunswick** (`new_brunswick_laws`): ~1,560 statutes & regulations from `laws.gnb.ca` Irosoft LIMS (Crown copyright)
+  - **Nova Scotia** (`nova_scotia_laws`): ~790 statutes & regulations from `nslegislature.ca` + `novascotia.ca` (Crown copyright)
+  - **Ontario** (`ontario_elaws`): ~3,044 statutes & regulations from `ontario.ca/laws` e-Laws (Crown copyright)
+- **Ontario REST API discovery**: Reverse-engineered the e-Laws Elasticsearch-backed API (`/laws/api/v2/legislation/en/browse-search` + `/doc-search`) — no Playwright required despite the site being a React SPA
+- All 5 adapters use `requests` + `lxml` — no new Python dependencies, no headless browser needed
+
+### Changed
+- Adapter count: 5 → 10 registered adapters
+- `config.json`: 5 new data source entries (all enabled by default)
+- Dashboard + Documents pages: `SOURCE_META` updated with 5 new provincial sources (GOV badge)
+
+### Deployment
+```bash
+cd /opt/canlii && git pull && docker compose up -d --build
+# No database migration needed — existing schema supports new source_type values
+# No Playwright required — all 5 new adapters use HTTP APIs
+```
+
+---
+
 ## v5.4 — 2025-02-17
 
 ### Added

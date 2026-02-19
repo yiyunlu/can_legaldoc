@@ -45,6 +45,7 @@ COPY utils/ utils/
 COPY database/ database/
 COPY main.py main_playwright.py main_multi.py ./
 COPY config.json ./
+COPY scripts/ scripts/
 
 # Copy built frontend from Stage 1
 COPY --from=frontend /build/dist/ web/dist/
