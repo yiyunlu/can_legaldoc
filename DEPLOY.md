@@ -363,7 +363,7 @@ If your deployed instance is running **v5.1** (Supabase-backed), this section co
 - **v5.2:** Database migrated from Supabase (cloud) to self-hosted PostgreSQL 16 (Docker). `SupabaseClient` replaced by `DatabaseClient`. `docker-compose.yml` now includes a `postgres` service.
 - **v5.3:** Built-in scheduler replaces external systemd/cron. New `scheduler_config` table. Supabase keepalive daemon. Jobs tagged with `[manual]`/`[scheduled]`.
 - **v5.4:** Document Browser page, paginated Run History with filtering/expandable logs, per-source "Last updated" timestamps on Dashboard, sidebar scheduler info.
-- **v5.5:** 5 new provincial adapters (MB, NL, NB, NS, ON). Ontario uses Playwright headless browser. Adapter count 5 → 10.
+- **v5.5:** 5 new provincial adapters (MB, NL, NB, NS, ON). All use HTTP APIs (Ontario via reverse-engineered REST API). Adapter count 5 → 10.
 
 **Upgrade steps:**
 
@@ -582,7 +582,7 @@ curl http://localhost:8000/health
 docker exec canlii-platform python main_multi.py --list-sources
 
 # Test Alberta adapter
-docker exec canlii-platform python main_multi.py --source alberta_kings_printer --limit 5
+docker exec canlii-platform python main_multi.py --source-type alberta_kings_printer --limit 5
 ```
 
 ---
@@ -608,3 +608,5 @@ docker exec canlii-platform python main_multi.py --source alberta_kings_printer 
 - [ ] Scheduler "Run Now" button triggers a scrape
 - [ ] Scheduled jobs appear in Run History with `[scheduled]` tag
 - [ ] Alberta King's Printer source appears in Data Sources page
+- [ ] All 10 data sources visible on Data Sources page (including MB, NL, NS, NB, ON)
+- [ ] `docker exec canlii-platform python scripts/post_upgrade_check.py` passes all checks

@@ -14,10 +14,23 @@ All notable changes to the Canadian Legal Data Platform are documented here.
 - **Ontario REST API discovery**: Reverse-engineered the e-Laws Elasticsearch-backed API (`/laws/api/v2/legislation/en/browse-search` + `/doc-search`) — no Playwright required despite the site being a React SPA
 - All 5 adapters use `requests` + `lxml` — no new Python dependencies, no headless browser needed
 
+### Fixed
+- **URL normalization**: NS and NB adapters encode spaces/commas in URLs consistently (`_normalize_url()` with decode-then-reencode to prevent double-encoding)
+- **NS navigation page filter**: Skip 13 known non-legislation pages (index.htm, aboutrr.htm, etc.) during regulation discovery
+
+### Added (Operations)
+- 5 production diagnostic/fix scripts in `scripts/`:
+  - `pre_upgrade_check.py` — v5.4-compatible pre-upgrade diagnostic with JSON snapshot
+  - `pre_upgrade_deep_check.py` — root cause analysis for production data issues
+  - `fix_before_upgrade.py` — delete empty shells, normalize URLs, sync checkpoint (supports `--dry-run`)
+  - `post_upgrade_check.py` — v5.5 upgrade verification with pre/post data comparison
+  - `db_health_check.py` — ongoing database health monitoring
+
 ### Changed
 - Adapter count: 5 → 10 registered adapters
 - `config.json`: 5 new data source entries (all enabled by default)
 - Dashboard + Documents pages: `SOURCE_META` updated with 5 new provincial sources (GOV badge)
+- `Dockerfile`: includes `scripts/` directory in Docker image
 
 ### Deployment
 ```bash
