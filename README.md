@@ -1,4 +1,4 @@
-# Canadian Legal Data Platform (v5.4)
+# Canadian Legal Data Platform (v5.5)
 
 面向加拿大少数族裔的法律咨询 Chatbot 数据基础设施。采集全国 13 省/地区 + 联邦的法律法规及历史判例，构建支持 RAG 检索增强生成的大规模法律知识库。
 
@@ -13,6 +13,11 @@
 | **Justice Canada XML** | 联邦法律 | 联邦 (ca) | ~5,800 | GitHub XML 仓库 | Open Government Licence |
 | **BC Laws CiviX API** | 省级法律 | BC 省 | ~880 | REST API | QP Licence 1.0 |
 | **Alberta King's Printer** | 省级法律 | AB 省 | ~1,415 | CKAN API + HTML | 开放数据 |
+| **Manitoba Laws** 🆕 | 省级法律 | MB 省 | ~1,926 | HTML 爬取 | OpenMB Licence |
+| **Newfoundland Laws** 🆕 | 省级法律 | NL 省 | ~2,105 | HTML 爬取 | Crown Copyright |
+| **Nova Scotia Laws** 🆕 | 省级法律 | NS 省 | ~790 | HTML 爬取 | Crown Copyright |
+| **New Brunswick Laws** 🆕 | 省级法律 | NB 省 | ~1,560 | HTML 爬取 (Irosoft) | Crown Copyright |
+| **Ontario e-Laws** 🆕 | 省级法律 | ON 省 | ~3,044 | REST API (逆向) | Crown Copyright |
 | **A2AJ Case Law** | 历史判例 | 全国 13 辖区 | 185,000+ | Hugging Face 数据集 | MIT |
 | **CanLII (Legacy)** | 法律法规 | AB / CA | 2,000+ | 网页爬虫 | ⚠️ 有法律风险 |
 
@@ -36,7 +41,7 @@ docker compose up -d --build
 
 # 4. 验证
 curl http://localhost:8000/health
-# → {"status":"ok","service":"Canadian Legal Data Platform","version":"5.4"}
+# → {"status":"ok","service":"Canadian Legal Data Platform","version":"5.5"}
 ```
 
 访问 `http://localhost:8000` 进入 Web 管理面板。
@@ -182,17 +187,20 @@ curl -X POST http://localhost:8000/api/scheduler/trigger \
 │  └── 安全外网访问 (可选)                                    │
 └────────────────────────────────────────────────────────────┘
 
-适配器架构:
-┌──────────┬──────────┬───────────────┬───────────┬──────────┐
-│ Justice  │ BC Laws  │ Alberta       │ A2AJ Case │ CanLII   │
-│ Canada   │ CiviX    │ King's        │ Law (HF)  │ Legacy   │
-│ XML      │ API      │ Printer       │           │          │
-├──────────┴──────────┴───────────────┴───────────┴──────────┤
-│              BaseSourceAdapter (base.py)                    │
-│   discover_documents() → fetch_documents_batch()           │
-├────────────────────────────────────────────────────────────┤
-│   DatabaseClient (psycopg2)  │  SQLite Checkpoint (去重)   │
-└────────────────────────────────────────────────────────────┘
+适配器架构 (10 个数据源):
+┌──────────┬──────────┬──────────┬───────────┬──────────┐
+│ Justice  │ BC Laws  │ Alberta  │ A2AJ Case │ CanLII   │
+│ Canada   │ CiviX    │ King's   │ Law (HF)  │ Legacy   │
+│ XML      │ API      │ Printer  │           │          │
+├──────────┼──────────┼──────────┼───────────┼──────────┤
+│ Manitoba │ NL       │ NS       │ NB        │ Ontario  │
+│ Laws 🆕  │ Laws 🆕  │ Laws 🆕  │ Laws 🆕   │ e-Laws🆕 │
+├──────────┴──────────┴──────────┴───────────┴──────────┤
+│              BaseSourceAdapter (base.py)               │
+│   discover_documents() → fetch_documents_batch()       │
+├───────────────────────────────────────────────────────┤
+│   DatabaseClient (psycopg2)  │  SQLite Checkpoint     │
+└───────────────────────────────────────────────────────┘
 ```
 
 ### 核心流程
@@ -212,6 +220,11 @@ curl -X POST http://localhost:8000/api/scheduler/trigger \
 │   │   ├── justice_canada_xml.py      # 联邦法律 (GitHub XML)
 │   │   ├── bc_laws_api.py             # BC 省法律 (CiviX REST API)
 │   │   ├── alberta_kings_printer.py   # Alberta 省法律 (CKAN + HTML)
+│   │   ├── manitoba_laws.py           # 🆕 Manitoba 省法律 (HTML)
+│   │   ├── newfoundland_laws.py       # 🆕 NL 省法律 (HTML)
+│   │   ├── nova_scotia_laws.py        # 🆕 NS 省法律 (HTML)
+│   │   ├── new_brunswick_laws.py      # 🆕 NB 省法律 (Irosoft HTML)
+│   │   ├── ontario_elaws.py           # 🆕 Ontario 省法律 (REST API)
 │   │   ├── a2aj_case_law.py           # 全国判例 (Hugging Face)
 │   │   └── canlii_legacy.py           # Legacy CanLII 爬虫封装
 │   └── db_client.py                   # PostgreSQL 交互层 (psycopg2 连接池)
@@ -234,7 +247,11 @@ curl -X POST http://localhost:8000/api/scheduler/trigger \
 │       ├── RunHistory.jsx
 │       └── Settings.jsx
 ├── scripts/
-│   └── migrate_supabase_to_local.py   # Supabase → PostgreSQL 迁移
+│   ├── migrate_supabase_to_local.py   # Supabase → PostgreSQL 迁移
+│   ├── pre_upgrade_check.py           # 升级前诊断 (v5.4 兼容)
+│   ├── fix_before_upgrade.py          # 升级前数据修复 (支持 --dry-run)
+│   ├── post_upgrade_check.py          # 升级后验证
+│   └── db_health_check.py             # 日常健康检查
 ├── main_multi.py                      # 多源采集 CLI 入口
 ├── config.json                        # 数据源配置
 ├── docker-compose.yml                 # 容器编排
@@ -277,16 +294,16 @@ curl -X POST http://localhost:8000/api/scheduler/trigger \
 from scraper.adapters import register_adapter
 from scraper.adapters.base import BaseSourceAdapter, DocumentMetadata, DocumentContent
 
-@register_adapter('ontario_laws')
-class OntarioLawsAdapter(BaseSourceAdapter):
+@register_adapter('your_source_type')
+class YourSourceAdapter(BaseSourceAdapter):
     def get_source_name(self) -> str:
-        return "Ontario Laws"
+        return "Your Source Name"
 
     def get_source_type(self) -> str:
-        return "ontario_laws"
+        return "your_source_type"
 
     def get_jurisdiction(self) -> str:
-        return "on"
+        return "xx"  # 辖区代码
 
     def discover_documents(self, limit=None):
         # 扫描文档列表 ...
@@ -306,8 +323,8 @@ class OntarioLawsAdapter(BaseSourceAdapter):
 - [x] **Phase 2**: Alberta King's Printer 适配器
 - [x] **Phase 3**: 自托管 PostgreSQL + Docker 全容器化
 - [x] **Phase 4**: 内置调度器 + 文档浏览器
-- [ ] **Phase 5**: HTML 爬虫适配器 (SK, MB, NB, NL, YT)
-- [ ] **Phase 6**: PDF 提取适配器 (ON, QC, NS, PE, NT, NU)
+- [x] **Phase 5**: 5 省适配器 — MB, NL, NS, NB, ON (v5.5)
+- [ ] **Phase 6**: 剩余省份适配器 (SK, PE, QC, YT, NT, NU)
 - [ ] **Phase 7**: RAG 向量搜索集成 (pgvector)
 
 ---
@@ -324,5 +341,5 @@ class OntarioLawsAdapter(BaseSourceAdapter):
 | 文件 | 说明 |
 | :--- | :--- |
 | [DEPLOY.md](./DEPLOY.md) | 部署指南（PVE + Docker + Cloudflare Tunnel） |
-| [CHANGELOG.md](./CHANGELOG.md) | 版本更新日志 (v5.0 → v5.4) |
+| [CHANGELOG.md](./CHANGELOG.md) | 版本更新日志 (v5.0 → v5.5) |
 | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | 常见问题排查 |
