@@ -12,6 +12,9 @@ const SOURCE_META = {
   nova_scotia_laws:      { label: 'GOV',  badge: 'badge-gov', name: 'NS Laws' },
   new_brunswick_laws:    { label: 'GOV',  badge: 'badge-gov', name: 'NB Laws' },
   ontario_elaws:         { label: 'GOV',  badge: 'badge-gov', name: 'Ontario e-Laws' },
+  yukon_laws:            { label: 'GOV',  badge: 'badge-gov', name: 'Yukon Laws' },
+  nwt_laws:              { label: 'GOV',  badge: 'badge-gov', name: 'NWT Laws' },
+  nunavut_laws:          { label: 'GOV',  badge: 'badge-gov', name: 'Nunavut Laws' },
 };
 
 const JUR_NAMES = {

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "=== Canadian Legal Data Platform v5.5 ==="
+echo "=== Canadian Legal Data Platform v5.6 ==="
 echo "Checking environment..."
 
 if [ -z "$DATABASE_URL" ]; then

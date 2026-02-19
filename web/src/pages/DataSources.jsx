@@ -19,6 +19,9 @@ const SOURCE_META = {
   nova_scotia_laws:      { label: 'GOV', badge: 'badge-gov', total: '~790',     est: 790 },
   new_brunswick_laws:    { label: 'GOV', badge: 'badge-gov', total: '~1,560',   est: 1560 },
   ontario_elaws:         { label: 'GOV', badge: 'badge-gov', total: '~4,400',   est: 4400 },
+  yukon_laws:            { label: 'GOV', badge: 'badge-gov', total: '~200',     est: 200 },
+  nwt_laws:              { label: 'GOV', badge: 'badge-gov', total: '~300',     est: 300 },
+  nunavut_laws:          { label: 'GOV', badge: 'badge-gov', total: '~250',     est: 250 },
 };
 
 export default function DataSources({ status, stats, onRefreshStats }) {

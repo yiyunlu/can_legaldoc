@@ -63,6 +63,9 @@ def _ensure_adapters_loaded():
         'scraper.adapters.nova_scotia_laws',
         'scraper.adapters.new_brunswick_laws',
         'scraper.adapters.ontario_elaws',
+        'scraper.adapters.yukon_laws',
+        'scraper.adapters.nwt_laws',
+        'scraper.adapters.nunavut_laws',
     ]
     for mod_name in adapter_modules:
         try:

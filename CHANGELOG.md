@@ -2,6 +2,31 @@
 
 All notable changes to the Canadian Legal Data Platform are documented here.
 
+## v5.6 — 2025-02-19
+
+### Added
+- **3 northern territory legislation adapters** — completes coverage for all 13 Canadian provinces/territories:
+  - **Yukon** (`yukon_laws`): ~200 statutes & regulations from `laws.yukon.ca` iLAWS CMS (PDF-only, bilingual titles)
+  - **Northwest Territories** (`nwt_laws`): ~300 statutes & regulations from `justice.gov.nt.ca` (PDF-only, tree-based file browser)
+  - **Nunavut** (`nunavut_laws`): ~250 statutes & regulations from `nunavutlegislation.ca` (PDF with embedded viewer, A-Z pages)
+- **PDF text extraction via PyMuPDF** (`fitz`): All 3 territory adapters extract text from PDFs using PyMuPDF with a rough regex-based fallback for environments without the library
+- New dependency: `PyMuPDF>=1.24.0` in `requirements.txt`
+
+### Changed
+- Adapter count: 10 → 13 registered adapters
+- `config.json`: 3 new data source entries (yukon_laws, nwt_laws, nunavut_laws — all enabled)
+- Dashboard, Documents, Data Sources pages: `SOURCE_META` updated with 3 new territory sources (GOV badge)
+- Data Sources page: estimated document counts for YT (~200), NT (~300), NU (~250)
+
+### Deployment
+```bash
+cd /opt/canlii && git pull && docker compose up -d --build
+# PyMuPDF auto-installs during Docker build
+# No database migration needed — existing schema supports new source_type values
+```
+
+---
+
 ## v5.5.1 — 2025-02-18
 
 ### Fixed (UI)

@@ -100,6 +100,30 @@
       "category": "Legislation",
       "enabled": true,
       "params": {}
+    },
+    {
+      "source_type": "yukon_laws",
+      "name": "Yukon Legislation (iLAWS)",
+      "jurisdiction": "yt",
+      "category": "Legislation",
+      "enabled": true,
+      "params": {}
+    },
+    {
+      "source_type": "nwt_laws",
+      "name": "NWT Legislation (Justice)",
+      "jurisdiction": "nt",
+      "category": "Legislation",
+      "enabled": true,
+      "params": {}
+    },
+    {
+      "source_type": "nunavut_laws",
+      "name": "Nunavut Legislation",
+      "jurisdiction": "nu",
+      "category": "Legislation",
+      "enabled": true,
+      "params": {}
     }
   ]
 }

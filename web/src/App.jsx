@@ -74,7 +74,7 @@ export default function App() {
       <nav className={`sidebar ${menuOpen ? 'open' : ''}`}>
         <div className="sidebar-brand">
           <h1>Canadian Legal Data</h1>
-          <div className="version">v5.5 Multi-Source Platform</div>
+          <div className="version">v5.6 Multi-Source Platform</div>
         </div>
 
         <div className="sidebar-nav">
