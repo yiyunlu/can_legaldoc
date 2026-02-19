@@ -1,4 +1,4 @@
-# Canadian Legal Data Platform (v5.5)
+# Canadian Legal Data Platform (v5.6)
 
 面向加拿大少数族裔的法律咨询 Chatbot 数据基础设施。采集全国 13 省/地区 + 联邦的法律法规及历史判例，构建支持 RAG 检索增强生成的大规模法律知识库。
 
@@ -18,6 +18,9 @@
 | **Nova Scotia Laws** 🆕 | 省级法律 | NS 省 | ~790 | HTML 爬取 | Crown Copyright |
 | **New Brunswick Laws** 🆕 | 省级法律 | NB 省 | ~1,560 | HTML 爬取 (Irosoft) | Crown Copyright |
 | **Ontario e-Laws** 🆕 | 省级法律 | ON 省 | ~3,044 | REST API (逆向) | Crown Copyright |
+| **Yukon Laws** 🆕 | 地区法律 | YT 地区 | ~200 | PDF 下载 (iLAWS) | Crown Copyright |
+| **NWT Laws** 🆕 | 地区法律 | NT 地区 | ~300 | PDF 下载 | Crown Copyright |
+| **Nunavut Laws** 🆕 | 地区法律 | NU 地区 | ~250 | PDF 下载 | Crown Copyright |
 | **A2AJ Case Law** | 历史判例 | 全国 13 辖区 | 185,000+ | Hugging Face 数据集 | MIT |
 | **CanLII (Legacy)** | 法律法规 | AB / CA | 2,000+ | 网页爬虫 | ⚠️ 有法律风险 |
 
@@ -41,7 +44,7 @@ docker compose up -d --build
 
 # 4. 验证
 curl http://localhost:8000/health
-# → {"status":"ok","service":"Canadian Legal Data Platform","version":"5.5"}
+# → {"status":"ok","service":"Canadian Legal Data Platform","version":"5.6"}
 ```
 
 访问 `http://localhost:8000` 进入 Web 管理面板。
@@ -187,15 +190,18 @@ curl -X POST http://localhost:8000/api/scheduler/trigger \
 │  └── 安全外网访问 (可选)                                    │
 └────────────────────────────────────────────────────────────┘
 
-适配器架构 (10 个数据源):
+适配器架构 (13 个数据源):
 ┌──────────┬──────────┬──────────┬───────────┬──────────┐
 │ Justice  │ BC Laws  │ Alberta  │ A2AJ Case │ CanLII   │
 │ Canada   │ CiviX    │ King's   │ Law (HF)  │ Legacy   │
 │ XML      │ API      │ Printer  │           │          │
 ├──────────┼──────────┼──────────┼───────────┼──────────┤
 │ Manitoba │ NL       │ NS       │ NB        │ Ontario  │
-│ Laws 🆕  │ Laws 🆕  │ Laws 🆕  │ Laws 🆕   │ e-Laws🆕 │
-├──────────┴──────────┴──────────┴───────────┴──────────┤
+│ Laws     │ Laws     │ Laws     │ Laws      │ e-Laws   │
+├──────────┼──────────┼──────────┼───────────┴──────────┤
+│ Yukon    │ NWT      │ Nunavut  │                      │
+│ Laws 🆕  │ Laws 🆕  │ Laws 🆕  │    (PDF adapters)    │
+├──────────┴──────────┴──────────┴──────────────────────┤
 │              BaseSourceAdapter (base.py)               │
 │   discover_documents() → fetch_documents_batch()       │
 ├───────────────────────────────────────────────────────┤
@@ -225,6 +231,9 @@ curl -X POST http://localhost:8000/api/scheduler/trigger \
 │   │   ├── nova_scotia_laws.py        # 🆕 NS 省法律 (HTML)
 │   │   ├── new_brunswick_laws.py      # 🆕 NB 省法律 (Irosoft HTML)
 │   │   ├── ontario_elaws.py           # 🆕 Ontario 省法律 (REST API)
+│   │   ├── yukon_laws.py              # 🆕 Yukon 地区法律 (PDF)
+│   │   ├── nwt_laws.py                # 🆕 NWT 地区法律 (PDF)
+│   │   ├── nunavut_laws.py            # 🆕 Nunavut 地区法律 (PDF)
 │   │   ├── a2aj_case_law.py           # 全国判例 (Hugging Face)
 │   │   └── canlii_legacy.py           # Legacy CanLII 爬虫封装
 │   └── db_client.py                   # PostgreSQL 交互层 (psycopg2 连接池)
@@ -325,7 +334,8 @@ class YourSourceAdapter(BaseSourceAdapter):
 - [x] **Phase 3**: 自托管 PostgreSQL + Docker 全容器化
 - [x] **Phase 4**: 内置调度器 + 文档浏览器
 - [x] **Phase 5**: 5 省适配器 — MB, NL, NS, NB, ON (v5.5)
-- [ ] **Phase 6**: 剩余省份适配器 (SK, PE, QC, YT, NT, NU)
+- [x] **Phase 6a**: 3 地区 PDF 适配器 — YT, NT, NU (v5.6)
+- [ ] **Phase 6b**: 剩余省份适配器 (SK, PE, QC)
 - [ ] **Phase 7**: RAG 向量搜索集成 (pgvector)
 
 ---
@@ -342,5 +352,5 @@ class YourSourceAdapter(BaseSourceAdapter):
 | 文件 | 说明 |
 | :--- | :--- |
 | [DEPLOY.md](./DEPLOY.md) | 部署指南（PVE + Docker + Cloudflare Tunnel） |
-| [CHANGELOG.md](./CHANGELOG.md) | 版本更新日志 (v5.0 → v5.5) |
+| [CHANGELOG.md](./CHANGELOG.md) | 版本更新日志 (v5.0 → v5.6) |
 | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | 常见问题排查 |
