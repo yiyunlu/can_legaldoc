@@ -37,6 +37,9 @@ COURT_TO_JURISDICTION = {
     'SST': 'ca',             # Social Security Tribunal
     'IRB-RAD': 'ca',         # Immigration and Refugee Board - RAD
     'IRB-RPD': 'ca',         # Immigration and Refugee Board - RPD
+    'RAD': 'ca',             # Refugee Appeal Division (HF dataset key)
+    'RPD': 'ca',             # Refugee Protection Division (HF dataset key)
+    'RLLR': 'ca',            # Refugee Law Lab Reporter (positive RPD decisions)
     'BCCA': 'bc',            # BC Court of Appeal
     'BCSC': 'bc',            # BC Supreme Court
     'ONCA': 'on',            # Ontario Court of Appeal
@@ -67,6 +70,9 @@ COURT_NAMES = {
     'SST': 'Social Security Tribunal',
     'IRB-RAD': 'Refugee Appeal Division',
     'IRB-RPD': 'Refugee Protection Division',
+    'RAD': 'Refugee Appeal Division',
+    'RPD': 'Refugee Protection Division',
+    'RLLR': 'Refugee Law Lab Reporter',
     'BCCA': 'BC Court of Appeal',
     'BCSC': 'BC Supreme Court',
     'ONCA': 'Ontario Court of Appeal',
