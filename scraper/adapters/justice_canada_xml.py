@@ -106,9 +106,12 @@ class JusticeCanadaXMLAdapter(BaseSourceAdapter):
             doc_type = "regulation" if is_regulation else "legislation"
             category = "Regulation" if is_regulation else "Legislation"
 
-            # Build a stable source_url
+            # Build a stable source_url (human-readable, not the .xml file)
             rel_path = xml_path.relative_to(self.clone_dir)
-            source_url = f"https://laws-lois.justice.gc.ca/{rel_path}"
+            # Remove .xml extension and add trailing slash for the web URL
+            # e.g. eng/acts/A-1.xml -> https://laws-lois.justice.gc.ca/eng/acts/A-1/
+            url_path = str(rel_path).replace('.xml', '')
+            source_url = f"https://laws-lois.justice.gc.ca/{url_path}/"
 
             # Try to extract citation from filename (e.g., A-1.xml -> A-1)
             citation = xml_path.stem
