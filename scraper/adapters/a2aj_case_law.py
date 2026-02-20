@@ -233,33 +233,34 @@ class A2AJCaseLawAdapter(BaseSourceAdapter):
 
     def discover_documents(self, limit: Optional[int] = None) -> List[DocumentMetadata]:
         """
-        Discover case law documents by streaming HF dataset.
+        Return a lightweight placeholder list for A2AJ.
 
-        For large-scale ingestion, the manager will pass a proportional limit.
-        The adapter streams records and yields metadata up to that limit.
+        Since the HF dataset contains full text, discovery and fetch are
+        combined in fetch_documents_batch(). We return synthetic metadata
+        entries so the manager knows how many documents to expect.
+        This avoids loading 185K records into memory during discovery.
         """
-        ds = self._load_dataset()
-        docs = []
-        effective_limit = limit if limit is not None else 185000
+        effective_limit = limit if limit is not None else 184565
 
-        try:
-            split = ds.get('train') or ds.get('test') or next(iter(ds.values()))
+        # Try to get real counts from REST API (cheap, no streaming)
+        coverage = self.get_coverage()
+        total_available = sum(c.get('number_of_documents', 0) for c in coverage) if coverage else 184565
 
-            for record in split:
-                if len(docs) >= effective_limit:
-                    break
-                meta = self._record_to_metadata(record)
-                if meta.source_url:
-                    docs.append(meta)
+        count = min(effective_limit, total_available)
+        logger.info(f"A2AJ discovery: {count:,} documents available (limit={limit}, total={total_available:,})")
 
-                if len(docs) % 10000 == 0 and len(docs) > 0:
-                    logger.info(f"A2AJ discovery progress: {len(docs):,} records scanned...")
-
-        except Exception as e:
-            logger.error(f"Error during A2AJ discovery: {e}")
-
-        logger.info(f"Discovered {len(docs):,} case law documents from A2AJ")
-        return docs
+        # Return lightweight stubs — batch will stream the real data
+        return [
+            DocumentMetadata(
+                source_url=f"a2aj://placeholder/{i}",
+                title=f"A2AJ Case #{i}",
+                citation="",
+                jurisdiction_code="ca",
+                category="Case Law",
+                document_type="case_law",
+            )
+            for i in range(count)
+        ]
 
     def fetch_document(self, doc_meta: DocumentMetadata) -> Optional[DocumentContent]:
         """
@@ -297,13 +298,26 @@ class A2AJCaseLawAdapter(BaseSourceAdapter):
         Efficient batch loading — streams directly from HF dataset.
         Since A2AJ includes full text, we yield directly from the stream
         without additional network requests.
+
+        When discovery returns placeholder stubs (lightweight mode),
+        we stream all records up to limit and let the DB handle dedup.
         """
         ds = self._load_dataset()
         count = 0
         skipped = 0
 
-        # Build a set of URLs we want to fetch for fast lookup
-        target_urls = {d.source_url for d in docs} if docs else None
+        # Detect placeholder mode: discovery returned lightweight stubs,
+        # so we stream everything from HF up to the limit instead of filtering.
+        is_placeholder = (
+            docs and len(docs) > 0
+            and docs[0].source_url.startswith('a2aj://placeholder/')
+        )
+
+        if is_placeholder:
+            target_urls = None
+            logger.info(f"A2AJ batch: placeholder mode — streaming up to {limit or 'all'} records from HF")
+        else:
+            target_urls = {d.source_url for d in docs} if docs else None
 
         try:
             split = ds.get('train') or ds.get('test') or next(iter(ds.values()))
@@ -316,10 +330,9 @@ class A2AJCaseLawAdapter(BaseSourceAdapter):
 
                 content = self._record_to_content(record)
 
-                # If we have a target list, filter to only matching URLs
+                # If we have a real target list, filter to only matching URLs
                 if target_urls and content.source_url not in target_urls:
                     skipped += 1
-                    # Log progress even when skipping (so user knows it's alive)
                     if skipped % 10000 == 0:
                         logger.info(f"A2AJ scanning... {skipped:,} skipped, {count:,} matched")
                     continue
@@ -329,7 +342,7 @@ class A2AJCaseLawAdapter(BaseSourceAdapter):
                     count += 1
 
                     if count % 1000 == 0:
-                        logger.info(f"A2AJ batch progress: {count:,} documents ingested")
+                        logger.info(f"A2AJ batch progress: {count:,} documents streamed")
 
         except Exception as e:
             logger.error(f"Error during A2AJ batch fetch: {e}")
