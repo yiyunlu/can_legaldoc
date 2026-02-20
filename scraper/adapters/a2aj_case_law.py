@@ -22,9 +22,8 @@ from utils.logger import logger
 
 
 A2AJ_API_BASE = "https://api.a2aj.ca"
-HF_ROWS_API = "https://datasets-server.huggingface.co/rows"
+HF_PARQUET_API = "https://datasets-server.huggingface.co/parquet"
 HF_DATASET = "a2aj/canadian-case-law"
-HF_PAGE_SIZE = 100  # max rows per request
 
 # Map A2AJ 'dataset' field values to jurisdiction codes.
 COURT_TO_JURISDICTION = {
@@ -91,7 +90,7 @@ COURT_NAMES = {
 class A2AJCaseLawAdapter(BaseSourceAdapter):
     """
     Adapter for Canadian case law from the A2AJ project.
-    Uses REST API for coverage info and HF dataset for bulk streaming.
+    Uses REST API for coverage info and HF parquet files for bulk ingestion.
     """
 
     def __init__(self, **kwargs):
@@ -154,28 +153,66 @@ class A2AJCaseLawAdapter(BaseSourceAdapter):
             logger.debug(f"A2AJ fetch by citation failed for '{citation}': {e}")
         return None
 
-    # ========== HF Hub REST API Methods ==========
+    # ========== HF Parquet Streaming Methods ==========
 
-    def _fetch_hf_rows(self, offset: int, length: int = HF_PAGE_SIZE) -> list:
-        """Fetch a page of rows from HF Hub REST API. Returns list of row dicts."""
+    def _get_parquet_urls(self) -> list:
+        """Get list of parquet file URLs from HF Hub."""
         try:
             resp = self.session.get(
-                HF_ROWS_API,
-                params={
-                    "dataset": HF_DATASET,
-                    "config": "default",
-                    "split": "train",
-                    "offset": offset,
-                    "length": length,
-                },
-                timeout=60,
+                HF_PARQUET_API,
+                params={"dataset": HF_DATASET},
+                timeout=30,
             )
             resp.raise_for_status()
             data = resp.json()
-            return [r["row"] for r in data.get("rows", [])]
+            files = data.get("parquet_files", [])
+            urls = [f["url"] for f in files if f.get("split") == "train"]
+            logger.info(f"A2AJ: found {len(urls)} parquet files for train split")
+            return urls
         except Exception as e:
-            logger.warning(f"A2AJ HF rows fetch failed (offset={offset}): {e}")
+            logger.warning(f"A2AJ parquet API failed: {e}")
             return []
+
+    def _stream_parquet_file(self, url: str) -> Generator[dict, None, None]:
+        """
+        Stream records from a single parquet file using pyarrow.
+        Downloads to a temp file, then reads in small batches (100 rows)
+        to keep memory bounded regardless of file/row-group size.
+        """
+        import tempfile
+        import os
+        import pyarrow.parquet as pq
+
+        tmp_path = None
+        try:
+            # Download parquet file to temp location (streaming to disk)
+            resp = self.session.get(url, stream=True, timeout=300)
+            resp.raise_for_status()
+
+            file_size = 0
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.parquet') as tmp:
+                tmp_path = tmp.name
+                for chunk in resp.iter_content(chunk_size=65536):
+                    tmp.write(chunk)
+                    file_size += len(chunk)
+
+            logger.info(f"A2AJ: downloaded parquet file ({file_size / 1e6:.1f} MB)")
+
+            # Use iter_batches to read in small chunks — bounded memory
+            pf = pq.ParquetFile(tmp_path)
+            for batch in pf.iter_batches(batch_size=100):
+                for row in batch.to_pylist():
+                    yield row
+                del batch  # free memory after each batch
+
+        except Exception as e:
+            logger.warning(f"A2AJ parquet stream error: {e}")
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
 
     # ========== Field Parsing ==========
 
@@ -311,21 +348,19 @@ class A2AJCaseLawAdapter(BaseSourceAdapter):
         stop_event: Optional[threading.Event] = None,
     ) -> Generator[DocumentContent, None, None]:
         """
-        Paginated batch loading via HF Hub REST API.
+        Batch loading via HF parquet file streaming.
 
-        Uses the datasets-server rows endpoint with offset/length pagination.
-        Each page is a single HTTP request — zero local memory accumulation.
-        This avoids OOM on memory-constrained servers (3-4GB).
+        Downloads parquet files one at a time, reads row-group by row-group
+        using pyarrow. Each row group is processed and freed — memory stays
+        bounded regardless of dataset size. Handles the full 184K+ dataset
+        on memory-constrained servers (3-4GB).
 
         When discovery returns placeholder stubs (lightweight mode),
-        we paginate through all records up to limit, letting the DB
+        we iterate through all parquet files up to limit, letting the DB
         handle dedup via upsert.
         """
         count = 0
         skipped = 0
-        offset = 0
-        empty_pages = 0
-        max_empty_pages = 3  # stop after 3 consecutive empty pages
 
         # Detect placeholder mode
         is_placeholder = (
@@ -335,32 +370,27 @@ class A2AJCaseLawAdapter(BaseSourceAdapter):
 
         if is_placeholder:
             target_urls = None
-            logger.info(f"A2AJ batch: paginated REST mode — fetching up to {limit or 'all'} records")
         else:
             target_urls = {d.source_url for d in docs} if docs else None
 
+        # Get parquet file URLs
+        parquet_urls = self._get_parquet_urls()
+        if not parquet_urls:
+            logger.error("A2AJ: no parquet files found, cannot proceed with batch")
+            return
+
+        logger.info(f"A2AJ batch: streaming {len(parquet_urls)} parquet files, limit={limit or 'all'}")
+
         try:
-            while True:
+            for file_idx, pq_url in enumerate(parquet_urls):
                 if limit is not None and count >= limit:
                     break
                 if stop_event and stop_event.is_set():
                     break
 
-                # Fetch a page of rows from HF Hub
-                rows = self._fetch_hf_rows(offset, HF_PAGE_SIZE)
+                logger.info(f"A2AJ: processing parquet file {file_idx + 1}/{len(parquet_urls)}")
 
-                if not rows:
-                    empty_pages += 1
-                    if empty_pages >= max_empty_pages:
-                        logger.info(f"A2AJ: {max_empty_pages} consecutive empty pages at offset {offset}, stopping")
-                        break
-                    # Retry once after a brief pause
-                    time.sleep(2)
-                    continue
-
-                empty_pages = 0  # reset on successful page
-
-                for record in rows:
+                for record in self._stream_parquet_file(pq_url):
                     if limit is not None and count >= limit:
                         break
                     if stop_event and stop_event.is_set():
@@ -378,15 +408,9 @@ class A2AJCaseLawAdapter(BaseSourceAdapter):
                         count += 1
 
                         if count % 1000 == 0:
-                            logger.info(f"A2AJ batch progress: {count:,} documents streamed (offset={offset})")
-
-                offset += len(rows)
-
-                # Brief pause to be respectful to HF API
-                if count > 0 and count % 5000 == 0:
-                    time.sleep(1)
+                            logger.info(f"A2AJ batch progress: {count:,} documents (file {file_idx + 1}/{len(parquet_urls)})")
 
         except Exception as e:
-            logger.error(f"Error during A2AJ batch fetch at offset {offset}: {e}")
+            logger.error(f"Error during A2AJ parquet batch fetch: {e}")
 
-        logger.info(f"A2AJ batch complete: {count:,} documents yielded, {skipped:,} skipped (final offset={offset})")
+        logger.info(f"A2AJ batch complete: {count:,} documents yielded, {skipped:,} skipped")
