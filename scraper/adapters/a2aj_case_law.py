@@ -120,7 +120,15 @@ class A2AJCaseLawAdapter(BaseSourceAdapter):
         try:
             resp = self.session.get(f"{A2AJ_API_BASE}/coverage", params={"doc_type": "cases"}, timeout=30)
             resp.raise_for_status()
-            self._coverage_cache = resp.json()
+            data = resp.json()
+            # API returns {"results": [...]} — extract the list
+            if isinstance(data, dict) and "results" in data:
+                self._coverage_cache = data["results"]
+            elif isinstance(data, list):
+                self._coverage_cache = data
+            else:
+                logger.warning(f"A2AJ coverage: unexpected response format: {type(data)}")
+                self._coverage_cache = []
             logger.info(f"A2AJ API: {len(self._coverage_cache)} court datasets available")
             return self._coverage_cache
         except Exception as e:
@@ -137,6 +145,9 @@ class A2AJCaseLawAdapter(BaseSourceAdapter):
             )
             resp.raise_for_status()
             data = resp.json()
+            # API wraps results in {"results": [...]}
+            if isinstance(data, dict) and "results" in data:
+                data = data["results"]
             if data and len(data) > 0:
                 return data[0].get('unofficial_text_en', '') or data[0].get('unofficial_text_fr', '')
         except Exception as e:
