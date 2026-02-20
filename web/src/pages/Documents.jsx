@@ -212,7 +212,11 @@ export default function Documents({ stats }) {
                         {JUR_NAMES[doc.jurisdiction_code] || doc.jurisdiction_code || '--'}
                       </td>
                       <td style={{ fontSize: 12 }}>
-                        {doc.document_type?.replace(/_/g, ' ') || '--'}
+                        {doc.document_type === 'case_law' ? (
+                          <span style={{ color: '#a855f7', fontWeight: 500 }}>case law</span>
+                        ) : (
+                          doc.document_type?.replace(/_/g, ' ') || '--'
+                        )}
                       </td>
                       <td>
                         <span className={`badge ${srcMeta.badge}`} style={{ fontSize: 10 }}>
@@ -252,6 +256,12 @@ export default function Documents({ stats }) {
                                 <div><strong>ID:</strong> <span style={{ fontFamily: 'monospace', fontSize: 10 }}>{detail.id}</span></div>
                                 <div><strong>Category:</strong> {detail.category || '--'}</div>
                                 <div><strong>Citation:</strong> {detail.citation || '--'}</div>
+                                {detail.metadata?.court && (
+                                  <div><strong>Court:</strong> {detail.metadata.court_name || detail.metadata.court}</div>
+                                )}
+                                {detail.metadata?.date && (
+                                  <div><strong>Decision Date:</strong> {detail.metadata.date}</div>
+                                )}
                                 <div><strong>Active:</strong> {detail.is_active ? 'Yes' : 'No'}</div>
                                 <div><strong>Version:</strong> {detail.version_number ?? '--'}</div>
                                 <div><strong>Last Scraped:</strong> {formatDate(detail.scraped_at)}</div>

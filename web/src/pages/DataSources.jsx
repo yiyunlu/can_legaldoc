@@ -12,7 +12,7 @@ const SOURCE_META = {
   justice_canada_xml:    { label: 'XML', badge: 'badge-xml', total: '~5,795',   est: 5795 },
   bc_laws_api:           { label: 'API', badge: 'badge-api', total: '~882',     est: 882 },
   alberta_kings_printer: { label: 'GOV', badge: 'badge-gov', total: '~1,415',   est: 1415 },
-  a2aj_case_law:         { label: 'HF',  badge: 'badge-hf',  total: '~184,565', est: 184565 },
+  a2aj_case_law:         { label: 'A2AJ', badge: 'badge-hf',  total: '~184,565', est: 184565 },
   canlii_legacy:         { label: 'Web', badge: 'badge-web', total: 'varies',   est: 1000 },
   manitoba_laws:         { label: 'GOV', badge: 'badge-gov', total: '~1,926',   est: 1926 },
   newfoundland_laws:     { label: 'GOV', badge: 'badge-gov', total: '~2,105',   est: 2105 },

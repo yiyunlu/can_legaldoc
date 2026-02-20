@@ -267,6 +267,18 @@ class DatabaseClient:
                 """)
                 type_counts = {r['document_type']: r['cnt'] for r in cur.fetchall()}
 
+                # Case law by court breakdown (from metadata->court field)
+                cur.execute("""
+                    SELECT metadata->>'court' AS court, COUNT(*) AS cnt
+                    FROM documents
+                    WHERE document_type = 'case_law'
+                      AND metadata->>'court' IS NOT NULL
+                      AND metadata->>'court' != ''
+                    GROUP BY metadata->>'court'
+                    ORDER BY cnt DESC
+                """)
+                court_counts = {r['court']: r['cnt'] for r in cur.fetchall()}
+
                 # Recent scrape jobs (last 10)
                 cur.execute("""
                     SELECT * FROM scrape_jobs
@@ -289,6 +301,7 @@ class DatabaseClient:
                     "by_source": source_counts,
                     "by_jurisdiction": jur_counts,
                     "by_type": type_counts,
+                    "by_court": court_counts,
                     "recent_jobs": recent_jobs,
                     "last_updated_by_source": last_updated_by_source,
                 }
