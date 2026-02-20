@@ -1,9 +1,10 @@
 """
 A2AJ Case Law adapter — fetches Canadian court decisions from the A2AJ
-project via REST API and Hugging Face dataset.
+project via REST API and Hugging Face Hub REST API.
 
 REST API (api.a2aj.ca): coverage info, citation lookup, full-text search.
-HF Dataset (a2aj/canadian-case-law): 185K+ decisions for bulk streaming.
+HF Hub API (datasets-server.huggingface.co): paginated row access for bulk
+ingestion — zero local memory overhead, no datasets library needed.
 
 Covers SCC, Federal Court, FCA, Tax Court, CHRT, IRB-RAD, SST,
 and select BC/ON/YK courts.
@@ -21,6 +22,9 @@ from utils.logger import logger
 
 
 A2AJ_API_BASE = "https://api.a2aj.ca"
+HF_ROWS_API = "https://datasets-server.huggingface.co/rows"
+HF_DATASET = "a2aj/canadian-case-law"
+HF_PAGE_SIZE = 100  # max rows per request
 
 # Map A2AJ 'dataset' field values to jurisdiction codes.
 COURT_TO_JURISDICTION = {
@@ -90,11 +94,7 @@ class A2AJCaseLawAdapter(BaseSourceAdapter):
     Uses REST API for coverage info and HF dataset for bulk streaming.
     """
 
-    def __init__(self, dataset_name: str = "a2aj/canadian-case-law",
-                 streaming: bool = True, **kwargs):
-        self.dataset_name = dataset_name
-        self.streaming = streaming
-        self._dataset = None
+    def __init__(self, **kwargs):
         self._coverage_cache = None
         self.session = requests.Session()
         self.session.headers.update({
@@ -154,23 +154,28 @@ class A2AJCaseLawAdapter(BaseSourceAdapter):
             logger.debug(f"A2AJ fetch by citation failed for '{citation}': {e}")
         return None
 
-    # ========== HF Dataset Methods ==========
+    # ========== HF Hub REST API Methods ==========
 
-    def _load_dataset(self):
-        """Lazy-load the Hugging Face dataset."""
-        if self._dataset is None:
-            try:
-                from datasets import load_dataset
-                logger.info(f"Loading dataset: {self.dataset_name} (streaming={self.streaming})")
-                self._dataset = load_dataset(
-                    self.dataset_name,
-                    streaming=self.streaming,
-                )
-                logger.info("A2AJ dataset loaded successfully")
-            except Exception as e:
-                logger.error(f"Failed to load A2AJ dataset: {e}")
-                raise
-        return self._dataset
+    def _fetch_hf_rows(self, offset: int, length: int = HF_PAGE_SIZE) -> list:
+        """Fetch a page of rows from HF Hub REST API. Returns list of row dicts."""
+        try:
+            resp = self.session.get(
+                HF_ROWS_API,
+                params={
+                    "dataset": HF_DATASET,
+                    "config": "default",
+                    "split": "train",
+                    "offset": offset,
+                    "length": length,
+                },
+                timeout=60,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return [r["row"] for r in data.get("rows", [])]
+        except Exception as e:
+            logger.warning(f"A2AJ HF rows fetch failed (offset={offset}): {e}")
+            return []
 
     # ========== Field Parsing ==========
 
@@ -306,19 +311,23 @@ class A2AJCaseLawAdapter(BaseSourceAdapter):
         stop_event: Optional[threading.Event] = None,
     ) -> Generator[DocumentContent, None, None]:
         """
-        Efficient batch loading — streams directly from HF dataset.
-        Since A2AJ includes full text, we yield directly from the stream
-        without additional network requests.
+        Paginated batch loading via HF Hub REST API.
+
+        Uses the datasets-server rows endpoint with offset/length pagination.
+        Each page is a single HTTP request — zero local memory accumulation.
+        This avoids OOM on memory-constrained servers (3-4GB).
 
         When discovery returns placeholder stubs (lightweight mode),
-        we stream all records up to limit and let the DB handle dedup.
+        we paginate through all records up to limit, letting the DB
+        handle dedup via upsert.
         """
-        ds = self._load_dataset()
         count = 0
         skipped = 0
+        offset = 0
+        empty_pages = 0
+        max_empty_pages = 3  # stop after 3 consecutive empty pages
 
-        # Detect placeholder mode: discovery returned lightweight stubs,
-        # so we stream everything from HF up to the limit instead of filtering.
+        # Detect placeholder mode
         is_placeholder = (
             docs and len(docs) > 0
             and docs[0].source_url.startswith('a2aj://placeholder/')
@@ -326,36 +335,58 @@ class A2AJCaseLawAdapter(BaseSourceAdapter):
 
         if is_placeholder:
             target_urls = None
-            logger.info(f"A2AJ batch: placeholder mode — streaming up to {limit or 'all'} records from HF")
+            logger.info(f"A2AJ batch: paginated REST mode — fetching up to {limit or 'all'} records")
         else:
             target_urls = {d.source_url for d in docs} if docs else None
 
         try:
-            split = ds.get('train') or ds.get('test') or next(iter(ds.values()))
-
-            for record in split:
+            while True:
                 if limit is not None and count >= limit:
                     break
                 if stop_event and stop_event.is_set():
                     break
 
-                content = self._record_to_content(record)
+                # Fetch a page of rows from HF Hub
+                rows = self._fetch_hf_rows(offset, HF_PAGE_SIZE)
 
-                # If we have a real target list, filter to only matching URLs
-                if target_urls and content.source_url not in target_urls:
-                    skipped += 1
-                    if skipped % 10000 == 0:
-                        logger.info(f"A2AJ scanning... {skipped:,} skipped, {count:,} matched")
+                if not rows:
+                    empty_pages += 1
+                    if empty_pages >= max_empty_pages:
+                        logger.info(f"A2AJ: {max_empty_pages} consecutive empty pages at offset {offset}, stopping")
+                        break
+                    # Retry once after a brief pause
+                    time.sleep(2)
                     continue
 
-                if content.content_text or content.content_html:
-                    yield content
-                    count += 1
+                empty_pages = 0  # reset on successful page
 
-                    if count % 1000 == 0:
-                        logger.info(f"A2AJ batch progress: {count:,} documents streamed")
+                for record in rows:
+                    if limit is not None and count >= limit:
+                        break
+                    if stop_event and stop_event.is_set():
+                        break
+
+                    content = self._record_to_content(record)
+
+                    # If we have a real target list, filter to only matching URLs
+                    if target_urls and content.source_url not in target_urls:
+                        skipped += 1
+                        continue
+
+                    if content.content_text or content.content_html:
+                        yield content
+                        count += 1
+
+                        if count % 1000 == 0:
+                            logger.info(f"A2AJ batch progress: {count:,} documents streamed (offset={offset})")
+
+                offset += len(rows)
+
+                # Brief pause to be respectful to HF API
+                if count > 0 and count % 5000 == 0:
+                    time.sleep(1)
 
         except Exception as e:
-            logger.error(f"Error during A2AJ batch fetch: {e}")
+            logger.error(f"Error during A2AJ batch fetch at offset {offset}: {e}")
 
-        logger.info(f"A2AJ batch complete: {count:,} documents yielded, {skipped:,} skipped")
+        logger.info(f"A2AJ batch complete: {count:,} documents yielded, {skipped:,} skipped (final offset={offset})")
