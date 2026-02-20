@@ -10,6 +10,8 @@ const JUR_NAMES = {
 const JUR_COLORS = {
   ca: '#4f6ef7', bc: '#34d399', ab: '#fbbf24', on: '#f87171',
   qc: '#a78bfa', ns: '#fb923c', nb: '#60a5fa', mb: '#f472b6',
+  pe: '#2dd4bf', sk: '#facc15', nl: '#818cf8', yt: '#c084fc',
+  nt: '#22d3ee', nu: '#e879f9',
 };
 
 const SOURCE_META = {
@@ -26,7 +28,7 @@ const SOURCE_META = {
   yukon_laws:            { label: 'GOV',  badge: 'badge-gov', name: 'Yukon Laws' },
   nwt_laws:              { label: 'GOV',  badge: 'badge-gov', name: 'NWT Laws' },
   nunavut_laws:          { label: 'GOV',  badge: 'badge-gov', name: 'Nunavut Laws' },
-  saskatchewan_laws:     { label: 'GOV',  badge: 'badge-gov', name: 'Saskatchewan Laws' },
+  saskatchewan_laws:     { label: 'API',  badge: 'badge-api', name: 'Saskatchewan Laws' },
   pei_laws:              { label: 'GOV',  badge: 'badge-gov', name: 'PEI Laws' },
   quebec_laws:           { label: 'GOV',  badge: 'badge-gov', name: 'Legis Québec' },
 };

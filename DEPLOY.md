@@ -399,7 +399,7 @@ systemctl stop canlii-daily-scrape.timer 2>/dev/null
 **Verify:**
 
 ```bash
-# Health check — should return version 5.6
+# Health check — should return version 5.7
 curl http://localhost:8000/health
 
 # Verify document count matches what was in Supabase

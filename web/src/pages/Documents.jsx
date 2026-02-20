@@ -15,7 +15,7 @@ const SOURCE_META = {
   yukon_laws:            { label: 'GOV',  badge: 'badge-gov', name: 'Yukon Laws' },
   nwt_laws:              { label: 'GOV',  badge: 'badge-gov', name: 'NWT Laws' },
   nunavut_laws:          { label: 'GOV',  badge: 'badge-gov', name: 'Nunavut Laws' },
-  saskatchewan_laws:     { label: 'GOV',  badge: 'badge-gov', name: 'Saskatchewan Laws' },
+  saskatchewan_laws:     { label: 'API',  badge: 'badge-api', name: 'Saskatchewan Laws' },
   pei_laws:              { label: 'GOV',  badge: 'badge-gov', name: 'PEI Laws' },
   quebec_laws:           { label: 'GOV',  badge: 'badge-gov', name: 'Legis Québec' },
 };
