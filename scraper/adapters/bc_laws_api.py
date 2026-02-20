@@ -12,7 +12,7 @@ QP License 1.0 — worldwide, royalty-free, perpetual, non-exclusive.
 import time
 import requests
 from typing import List, Optional
-from lxml import etree
+from lxml import etree, html as lxml_html
 
 from scraper.adapters import register_adapter
 from scraper.adapters.base import BaseSourceAdapter, DocumentMetadata, DocumentContent
@@ -209,7 +209,22 @@ class BCLawsAPIAdapter(BaseSourceAdapter):
                 logger.error(f"Empty content for BC document {dir_id} (resolved: {real_doc_id})")
                 return None
 
-            root = etree.fromstring(resp.content)
+            # Try strict XML first, fall back to HTML parser for malformed responses
+            try:
+                root = etree.fromstring(resp.content)
+            except etree.XMLSyntaxError:
+                # CiviX sometimes returns HTML error pages or malformed XML
+                try:
+                    root = lxml_html.fromstring(resp.content)
+                    # If it parsed as HTML, check if it's actually an error page
+                    body_text = root.text_content().strip()
+                    if len(body_text) < 100 or '<html' in resp.content[:500].decode('utf-8', errors='ignore').lower():
+                        logger.warning(f"BC document {dir_id} returned HTML error page, skipping")
+                        return None
+                except Exception:
+                    logger.error(f"BC document {dir_id}: unparseable content (not valid XML or HTML)")
+                    return None
+
             content_html = etree.tostring(root, pretty_print=True, encoding='unicode')
             content_text = self._extract_text(root)
 

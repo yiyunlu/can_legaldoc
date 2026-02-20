@@ -76,7 +76,7 @@ class JusticeCanadaXMLAdapter(BaseSourceAdapter):
             logger.warning(f"Directory not found: {eng_dir}")
             return xml_files
 
-        for category_dir in ["Acts", "Regulations"]:
+        for category_dir in ["acts", "Acts", "regulations", "Regulations"]:
             cat_path = eng_dir / category_dir
             if cat_path.exists():
                 for xml_file in sorted(cat_path.glob("*.xml")):
@@ -101,8 +101,8 @@ class JusticeCanadaXMLAdapter(BaseSourceAdapter):
             if not title:
                 title = xml_path.stem.replace('-', ' ').replace('_', ' ')
 
-            # Determine document type from path
-            is_regulation = "Regulations" in str(xml_path)
+            # Determine document type from path (case-insensitive)
+            is_regulation = "regulations" in str(xml_path).lower()
             doc_type = "regulation" if is_regulation else "legislation"
             category = "Regulation" if is_regulation else "Legislation"
 
