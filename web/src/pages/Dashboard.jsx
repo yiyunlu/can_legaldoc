@@ -15,22 +15,22 @@ const JUR_COLORS = {
 };
 
 const SOURCE_META = {
-  justice_canada_xml:    { label: 'XML',  badge: 'badge-xml', name: 'Federal Legislation' },
-  bc_laws_api:           { label: 'API',  badge: 'badge-api', name: 'BC Laws' },
-  alberta_kings_printer: { label: 'GOV',  badge: 'badge-gov', name: 'Alberta Legislation' },
-  a2aj_case_law:         { label: 'HF',   badge: 'badge-hf',  name: 'A2AJ Case Law' },
-  canlii_legacy:         { label: 'Web',  badge: 'badge-web', name: 'CanLII Legacy' },
-  manitoba_laws:         { label: 'GOV',  badge: 'badge-gov', name: 'Manitoba Laws' },
-  newfoundland_laws:     { label: 'GOV',  badge: 'badge-gov', name: 'NL Laws' },
-  nova_scotia_laws:      { label: 'GOV',  badge: 'badge-gov', name: 'NS Laws' },
-  new_brunswick_laws:    { label: 'GOV',  badge: 'badge-gov', name: 'NB Laws' },
-  ontario_elaws:         { label: 'GOV',  badge: 'badge-gov', name: 'Ontario e-Laws' },
-  yukon_laws:            { label: 'GOV',  badge: 'badge-gov', name: 'Yukon Laws' },
-  nwt_laws:              { label: 'GOV',  badge: 'badge-gov', name: 'NWT Laws' },
-  nunavut_laws:          { label: 'GOV',  badge: 'badge-gov', name: 'Nunavut Laws' },
-  saskatchewan_laws:     { label: 'API',  badge: 'badge-api', name: 'Saskatchewan Laws' },
-  pei_laws:              { label: 'GOV',  badge: 'badge-gov', name: 'PEI Laws' },
-  quebec_laws:           { label: 'GOV',  badge: 'badge-gov', name: 'Legis Québec' },
+  justice_canada_xml:    { label: 'XML',  badge: 'badge-xml', name: 'Federal Legislation', est: 5795 },
+  bc_laws_api:           { label: 'API',  badge: 'badge-api', name: 'BC Laws', est: 882 },
+  alberta_kings_printer: { label: 'GOV',  badge: 'badge-gov', name: 'Alberta Legislation', est: 1415 },
+  a2aj_case_law:         { label: 'HF',   badge: 'badge-hf',  name: 'A2AJ Case Law', est: 184565 },
+  canlii_legacy:         { label: 'Web',  badge: 'badge-web', name: 'CanLII Legacy', est: 1000 },
+  manitoba_laws:         { label: 'GOV',  badge: 'badge-gov', name: 'Manitoba Laws', est: 1926 },
+  newfoundland_laws:     { label: 'GOV',  badge: 'badge-gov', name: 'NL Laws', est: 2105 },
+  nova_scotia_laws:      { label: 'GOV',  badge: 'badge-gov', name: 'NS Laws', est: 790 },
+  new_brunswick_laws:    { label: 'GOV',  badge: 'badge-gov', name: 'NB Laws', est: 1560 },
+  ontario_elaws:         { label: 'GOV',  badge: 'badge-gov', name: 'Ontario e-Laws', est: 4400 },
+  yukon_laws:            { label: 'GOV',  badge: 'badge-gov', name: 'Yukon Laws', est: 200 },
+  nwt_laws:              { label: 'GOV',  badge: 'badge-gov', name: 'NWT Laws', est: 300 },
+  nunavut_laws:          { label: 'GOV',  badge: 'badge-gov', name: 'Nunavut Laws', est: 250 },
+  saskatchewan_laws:     { label: 'API',  badge: 'badge-api', name: 'Saskatchewan Laws', est: 1160 },
+  pei_laws:              { label: 'GOV',  badge: 'badge-gov', name: 'PEI Laws', est: 850 },
+  quebec_laws:           { label: 'GOV',  badge: 'badge-gov', name: 'Legis Québec', est: 4700 },
 };
 
 export default function Dashboard({ status, stats }) {
@@ -42,6 +42,14 @@ export default function Dashboard({ status, stats }) {
   const total = stats.total_documents || 0;
   const maxJur = Math.max(...Object.values(byJur).map(j => j.count), 1);
   const isRunning = status?.is_running || false;
+
+  // Coverage calculation (exclude A2AJ case law for more meaningful legislative coverage %)
+  const estLegislation = Object.entries(SOURCE_META)
+    .filter(([k]) => k !== 'a2aj_case_law' && k !== 'canlii_legacy')
+    .reduce((s, [, m]) => s + (m.est || 0), 0);
+  const dbLegislation = (byType.legislation || 0) + (byType.regulation || 0);
+  const coveragePct = estLegislation > 0 ? ((dbLegislation / estLegislation) * 100) : 0;
+  const coverageDisplay = coveragePct >= 1 ? `${Math.round(coveragePct)}%` : coveragePct > 0 ? '< 1%' : '0%';
 
   return (
     <div>
@@ -82,6 +90,12 @@ export default function Dashboard({ status, stats }) {
         <div className="stat-card">
           <div className="stat-value">{Object.keys(byJur).length}</div>
           <div className="stat-label">Jurisdictions</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-value" style={{ color: coveragePct >= 50 ? 'var(--success)' : 'var(--orange)' }}>
+            {coverageDisplay}
+          </div>
+          <div className="stat-label">Legislation Coverage</div>
         </div>
       </div>
 

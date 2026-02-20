@@ -193,6 +193,22 @@ def get_document(doc_id: str):
     return doc
 
 
+@api_router.get("/documents/{doc_id}/content")
+def get_document_content(doc_id: str, max_length: int = 50000):
+    """Get document text content (truncated for preview)."""
+    from scraper.db_client import DatabaseClient
+    db = DatabaseClient()
+    try:
+        content = db.get_document_content(doc_id, max_length=min(max_length, 200000))
+        if content is None:
+            raise HTTPException(status_code=404, detail="Document or content not found")
+        return content
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ---- Database Diagnostics ----
 
 @api_router.get("/debug/db")

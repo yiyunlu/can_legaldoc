@@ -190,8 +190,8 @@ export default function DataSources({ status, stats, onRefreshStats }) {
                 </div>
               </div>
 
-              {/* Progress (if active) */}
-              {isActive && (
+              {/* Progress bar: active run or persistent coverage */}
+              {isActive ? (
                 <div className="source-progress" style={{ marginBottom: 14 }}>
                   <div
                     className="source-progress-bar"
@@ -202,6 +202,22 @@ export default function DataSources({ status, stats, onRefreshStats }) {
                       background: 'var(--success)',
                     }}
                   />
+                </div>
+              ) : meta.est > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <div className="source-progress" style={{ height: 4 }}>
+                    <div
+                      className="source-progress-bar"
+                      style={{
+                        width: `${Math.min(100, (docCount / meta.est) * 100)}%`,
+                        background: docCount >= meta.est * 0.9 ? 'var(--success)' : 'var(--accent)',
+                        transition: 'width 0.5s ease',
+                      }}
+                    />
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3, textAlign: 'right' }}>
+                    {docCount > 0 ? `${Math.round((docCount / meta.est) * 100)}%` : '—'}
+                  </div>
                 </div>
               )}
 

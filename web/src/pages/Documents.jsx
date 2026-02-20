@@ -47,6 +47,8 @@ export default function Documents({ stats }) {
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
   const [detail, setDetail] = useState(null);
+  const [contentPreview, setContentPreview] = useState(null);
+  const [contentLoading, setContentLoading] = useState(false);
   const debounceRef = useRef(null);
 
   // Debounce search input
@@ -84,15 +86,30 @@ export default function Documents({ stats }) {
     if (expandedId === docId) {
       setExpandedId(null);
       setDetail(null);
+      setContentPreview(null);
       return;
     }
     setExpandedId(docId);
+    setContentPreview(null);
     try {
       const d = await api.getDocument(docId);
       setDetail(d);
     } catch {
       setDetail(null);
     }
+  };
+
+  // Fetch content preview
+  const loadContentPreview = async (docId) => {
+    setContentLoading(true);
+    try {
+      const res = await fetch(`/api/documents/${docId}/content?max_length=20000`);
+      if (res.ok) {
+        const data = await res.json();
+        setContentPreview(data);
+      }
+    } catch { /* silent */ }
+    finally { setContentLoading(false); }
   };
 
   // Reset page when filters change
@@ -263,6 +280,52 @@ export default function Documents({ stats }) {
                                     <pre className="log-full" style={{ marginTop: 4, maxHeight: 150 }}>
                                       {typeof detail.metadata === 'string' ? detail.metadata : JSON.stringify(detail.metadata, null, 2)}
                                     </pre>
+                                  </div>
+                                )}
+                                {/* Content Preview */}
+                                {detail.has_content && (
+                                  <div style={{ gridColumn: '1 / -1', marginTop: 8 }}>
+                                    {!contentPreview ? (
+                                      <button
+                                        className="btn btn-sm btn-ghost"
+                                        onClick={(e) => { e.stopPropagation(); loadContentPreview(doc.id); }}
+                                        disabled={contentLoading}
+                                        style={{ fontSize: 11 }}
+                                      >
+                                        {contentLoading ? 'Loading...' : '📄 Preview Content'}
+                                      </button>
+                                    ) : (
+                                      <div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                          <strong style={{ fontSize: 11 }}>
+                                            Content Preview
+                                            {contentPreview.truncated && (
+                                              <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
+                                                {' '}(showing 20KB of {(contentPreview.text_length / 1024).toFixed(0)}KB)
+                                              </span>
+                                            )}
+                                          </strong>
+                                          <button
+                                            className="btn btn-sm btn-ghost"
+                                            onClick={(e) => { e.stopPropagation(); setContentPreview(null); }}
+                                            style={{ fontSize: 10, padding: '2px 6px' }}
+                                          >
+                                            Close
+                                          </button>
+                                        </div>
+                                        <pre className="log-full" style={{
+                                          maxHeight: 400,
+                                          overflow: 'auto',
+                                          whiteSpace: 'pre-wrap',
+                                          wordBreak: 'break-word',
+                                          fontSize: 11,
+                                          lineHeight: 1.5,
+                                          padding: 12,
+                                        }}>
+                                          {contentPreview.content_text || '(empty)'}
+                                        </pre>
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>

@@ -506,6 +506,39 @@ class DatabaseClient:
             logger.error(f"Get document detail failed: {e}")
             return None
 
+    def get_document_content(self, doc_id: str, max_length: int = 50000) -> Optional[Dict]:
+        """Get document text/html content for preview (truncated)."""
+        try:
+            with self._get_conn() as conn:
+                cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cur.execute("""
+                    SELECT d.title, d.citation,
+                           LEFT(dv.content_text, %s) AS content_text,
+                           length(dv.content_text) AS text_length,
+                           length(dv.content_html) AS html_length,
+                           dv.version_number,
+                           COALESCE(dv.content_text IS NOT NULL AND dv.content_text != '', false) AS has_content
+                    FROM documents d
+                    LEFT JOIN document_versions dv
+                        ON d.id = dv.document_id AND dv.is_latest = true
+                    WHERE d.id = %s
+                """, (max_length, doc_id))
+                row = cur.fetchone()
+                if not row:
+                    return None
+                return {
+                    "title": row['title'],
+                    "citation": row['citation'],
+                    "content_text": row['content_text'] or '',
+                    "text_length": row['text_length'] or 0,
+                    "html_length": row['html_length'] or 0,
+                    "truncated": (row['text_length'] or 0) > max_length,
+                    "version": row['version_number'],
+                }
+        except Exception as e:
+            logger.error(f"Get document content failed: {e}")
+            return None
+
     # ========== Database Diagnostics ==========
 
     def get_db_diagnostics(self) -> Dict:
