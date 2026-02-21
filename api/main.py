@@ -1,5 +1,6 @@
 import os
 import json
+import logging
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, APIRouter, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,7 +13,15 @@ from api.manager import scraper_manager
 from api.scheduler import scheduler_service
 from utils.config import config
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="Canadian Legal Data Platform API")
+
+
+def _safe_500(e: Exception, context: str = "operation") -> HTTPException:
+    """Return a sanitized 500 error — log the real exception, return generic message."""
+    logger.error(f"{context} failed: {e}", exc_info=True)
+    return HTTPException(status_code=500, detail=f"Internal server error during {context}")
 
 # ---------- API Key Auth ----------
 
@@ -46,7 +55,7 @@ app.add_middleware(
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "Canadian Legal Data Platform", "version": "5.9"}
+    return {"status": "ok", "service": "Canadian Legal Data Platform", "version": "5.10"}
 
 
 # ========================================================================
@@ -90,7 +99,7 @@ def update_config(request: ConfigUpdateRequest):
         config.save_targets(targets_data)
         return {"status": "success", "targets": config.targets}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _safe_500(e, "config update")
 
 
 # ---- Sources (multi-source config) ----
@@ -108,7 +117,7 @@ def update_sources(request: SourcesUpdateRequest):
         config.save_sources(sources_data)
         return {"status": "success", "sources": config.sources}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _safe_500(e, "sources update")
 
 @api_router.get("/sources/available", dependencies=[Depends(require_admin)])
 def list_available_adapters():
@@ -130,7 +139,7 @@ def get_source_stats():
     try:
         return db.get_source_stats()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _safe_500(e, "source stats")
 
 
 # ---- Scraper Control ----
@@ -243,7 +252,7 @@ def get_document_content(doc_id: str, max_length: int = 50000):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _safe_500(e, "document content fetch")
 
 
 # ---- Database Diagnostics ----
@@ -256,7 +265,7 @@ def get_db_diagnostics():
     try:
         return db.get_db_diagnostics()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _safe_500(e, "database diagnostics")
 
 
 # ---- Discovery (legacy CanLII) ----

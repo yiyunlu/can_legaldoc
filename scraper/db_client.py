@@ -30,9 +30,10 @@ class DatabaseClient:
 
         try:
             self.pool = ThreadedConnectionPool(
-                minconn=1,
-                maxconn=5,
+                minconn=2,
+                maxconn=20,
                 dsn=db_url,
+                connect_timeout=10,
             )
             logger.info("PostgreSQL connection pool initialized")
         except Exception as e:
@@ -523,53 +524,75 @@ class DatabaseClient:
 
                 filter_clause = (" AND " + " AND ".join(conditions)) if conditions else ""
 
-                # Count matching documents
+                # Count matching documents — UNION approach forces GIN index usage
+                # (OR across two tables causes seq scan; UNION uses bitmap index scan)
                 cur.execute(f"""
-                    WITH q AS (SELECT plainto_tsquery('english', %s) AS tsq)
-                    SELECT COUNT(DISTINCT d.id) AS cnt
-                    FROM q, documents d
-                    LEFT JOIN document_versions dv
-                        ON d.id = dv.document_id AND dv.is_latest = true
-                    WHERE (
-                        d.search_vector @@ q.tsq
-                        OR dv.content_search_vector @@ q.tsq
-                    ){filter_clause}
+                    WITH q AS (SELECT plainto_tsquery('english', %s) AS tsq),
+                    title_matches AS (
+                        SELECT d.id FROM q, documents d
+                        WHERE d.search_vector @@ q.tsq
+                    ),
+                    content_matches AS (
+                        SELECT dv.document_id AS id FROM q, document_versions dv
+                        WHERE dv.content_search_vector @@ q.tsq AND dv.is_latest = true
+                    ),
+                    all_matches AS (
+                        SELECT id FROM title_matches
+                        UNION
+                        SELECT id FROM content_matches
+                    )
+                    SELECT COUNT(*) AS cnt FROM all_matches am
+                    JOIN documents d ON d.id = am.id
+                    WHERE true{filter_clause}
                 """, [query] + filter_params)
                 total = cur.fetchone()['cnt']
 
                 offset = (page - 1) * per_page
 
-                # Fetch ranked results with snippets
+                # Fetch ranked results with snippets — two-step strategy:
+                # 1) Rank using title ts_rank + boolean content match (avoids TOAST reads)
+                # 2) Only run ts_headline on the final page of results
+                # filter_params are duplicated: once for all_ids filter, once for LIMIT/OFFSET
                 cur.execute(f"""
-                    WITH q AS (SELECT plainto_tsquery('english', %s) AS tsq)
-                    SELECT
-                        d.id, d.title, d.citation, d.source_url, d.jurisdiction_code,
-                        d.source_type, d.document_type, d.category, d.is_active,
-                        d.created_at, d.updated_at,
+                    WITH q AS (SELECT plainto_tsquery('english', %s) AS tsq),
+                    title_matches AS (
+                        SELECT d.id, ts_rank_cd(d.search_vector, q.tsq) AS title_rank
+                        FROM q, documents d WHERE d.search_vector @@ q.tsq
+                    ),
+                    content_match_ids AS (
+                        SELECT dv.document_id AS id
+                        FROM q, document_versions dv
+                        WHERE dv.content_search_vector @@ q.tsq AND dv.is_latest = true
+                    ),
+                    all_ids AS (
+                        SELECT a.id FROM (
+                            SELECT id FROM title_matches UNION SELECT id FROM content_match_ids
+                        ) a
+                        JOIN documents d ON d.id = a.id
+                        WHERE true{filter_clause}
+                    ),
+                    ranked AS (
+                        SELECT a.id,
+                            COALESCE(t.title_rank, 0) * 4.0
+                                + CASE WHEN c.id IS NOT NULL THEN 0.1 ELSE 0 END AS relevance
+                        FROM all_ids a
+                        LEFT JOIN title_matches t ON t.id = a.id
+                        LEFT JOIN content_match_ids c ON c.id = a.id
+                        ORDER BY relevance DESC
+                        LIMIT %s OFFSET %s
+                    )
+                    SELECT r.relevance, d.id, d.title, d.citation, d.source_url,
+                        d.jurisdiction_code, d.source_type, d.document_type,
+                        d.category, d.is_active, d.created_at, d.updated_at,
                         (dv.content_text IS NOT NULL AND dv.content_text != '') AS has_content,
-                        (
-                            COALESCE(ts_rank_cd(d.search_vector, q.tsq), 0) * 4.0
-                            + COALESCE(ts_rank_cd(dv.content_search_vector, q.tsq), 0)
-                        ) AS relevance,
-                        CASE
-                            WHEN dv.content_search_vector @@ q.tsq
-                            THEN ts_headline(
-                                'english',
-                                LEFT(dv.content_text, 10000),
-                                q.tsq,
-                                'MaxWords=35, MinWords=15, StartSel=<mark>, StopSel=</mark>, MaxFragments=2, FragmentDelimiter= ... '
-                            )
-                            ELSE NULL
-                        END AS snippet
-                    FROM q, documents d
-                    LEFT JOIN document_versions dv
-                        ON d.id = dv.document_id AND dv.is_latest = true
-                    WHERE (
-                        d.search_vector @@ q.tsq
-                        OR dv.content_search_vector @@ q.tsq
-                    ){filter_clause}
-                    ORDER BY relevance DESC, d.updated_at DESC
-                    LIMIT %s OFFSET %s
+                        CASE WHEN dv.content_search_vector @@ q.tsq
+                            THEN ts_headline('english', LEFT(dv.content_text, 10000), q.tsq,
+                                'MaxWords=35, MinWords=15, StartSel=<mark>, StopSel=</mark>, MaxFragments=2, FragmentDelimiter= ... ')
+                            ELSE NULL END AS snippet
+                    FROM q, ranked r
+                    JOIN documents d ON d.id = r.id
+                    LEFT JOIN document_versions dv ON d.id = dv.document_id AND dv.is_latest = true
+                    ORDER BY r.relevance DESC
                 """, [query] + filter_params + [per_page, offset])
 
                 docs = [self._serialize_row(r) for r in cur.fetchall()]
