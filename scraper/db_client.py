@@ -913,7 +913,7 @@ class DatabaseClient:
 
                 # 2. Table row counts + sizes
                 table_info = []
-                for tbl in ('documents', 'document_versions', 'document_chunks', 'scrape_jobs', 'scrape_targets', 'scheduler_config', 'jurisdictions'):
+                for tbl in ('documents', 'document_versions', 'document_chunks', 'scrape_jobs', 'scrape_targets', 'scheduler_config', 'jurisdictions', 'source_sync_log'):
                     cur.execute(f"""
                         SELECT
                             '{tbl}' AS table_name,

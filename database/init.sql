@@ -153,11 +153,11 @@ CREATE INDEX IF NOT EXISTS idx_source_sync_log_source
 ALTER TABLE document_versions ALTER COLUMN content_html SET COMPRESSION lz4;
 ALTER TABLE document_versions ALTER COLUMN content_text SET COMPRESSION lz4;
 
--- 10. Full-text search columns
+-- 11. Full-text search columns
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS search_vector tsvector;
 ALTER TABLE document_versions ADD COLUMN IF NOT EXISTS content_search_vector tsvector;
 
--- 11. Trigger: auto-maintain documents.search_vector (title=A, citation=B)
+-- 12. Trigger: auto-maintain documents.search_vector (title=A, citation=B)
 CREATE OR REPLACE FUNCTION documents_search_vector_update() RETURNS trigger AS $$
 BEGIN
     NEW.search_vector :=
@@ -172,7 +172,7 @@ CREATE TRIGGER trg_documents_search_vector
     BEFORE INSERT OR UPDATE OF title, citation ON documents
     FOR EACH ROW EXECUTE FUNCTION documents_search_vector_update();
 
--- 12. Trigger: auto-maintain document_versions.content_search_vector (latest only)
+-- 13. Trigger: auto-maintain document_versions.content_search_vector (latest only)
 CREATE OR REPLACE FUNCTION doc_versions_search_vector_update() RETURNS trigger AS $$
 BEGIN
     IF NEW.is_latest = true AND NEW.content_text IS NOT NULL AND NEW.content_text != '' THEN
@@ -189,7 +189,7 @@ CREATE TRIGGER trg_doc_versions_search_vector
     BEFORE INSERT OR UPDATE OF content_text, is_latest ON document_versions
     FOR EACH ROW EXECUTE FUNCTION doc_versions_search_vector_update();
 
--- 13. GIN indexes for full-text search
+-- 14. GIN indexes for full-text search
 CREATE INDEX IF NOT EXISTS idx_documents_search_vector
     ON documents USING gin(search_vector);
 CREATE INDEX IF NOT EXISTS idx_doc_versions_content_search_vector

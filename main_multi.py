@@ -44,7 +44,19 @@ def main():
                         help='Show per-source freshness summary and exit')
     args = parser.parse_args()
 
-    # Init DB client
+    # List sources (no DB needed)
+    if args.list_sources:
+        print("\n=== Registered Adapters ===")
+        for source_type, cls in list_adapters().items():
+            print(f"  {source_type}: {cls.__name__}")
+
+        print("\n=== Configured Sources ===")
+        for src in config.sources:
+            status = "ENABLED" if src.get('enabled', True) else "disabled"
+            print(f"  [{status}] {src['source_type']}: {src.get('name', '?')} ({src.get('jurisdiction', '?')})")
+        return
+
+    # Init DB client (needed for all remaining commands)
     db_client = DatabaseClient()
 
     # Show freshness summary
@@ -70,18 +82,6 @@ def main():
             if 'last_sync' in info:
                 sync = info['last_sync']
                 print(f"    Last sync: {sync.get('mode', '?')} at {sync.get('started_at', '?')}")
-        return
-
-    # List sources
-    if args.list_sources:
-        print("\n=== Registered Adapters ===")
-        for source_type, cls in list_adapters().items():
-            print(f"  {source_type}: {cls.__name__}")
-
-        print("\n=== Configured Sources ===")
-        for src in config.sources:
-            status = "ENABLED" if src.get('enabled', True) else "disabled"
-            print(f"  [{status}] {src['source_type']}: {src.get('name', '?')} ({src.get('jurisdiction', '?')})")
         return
 
     # Reset checkpoint if requested
