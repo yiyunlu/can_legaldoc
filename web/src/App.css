@@ -365,6 +365,16 @@ tbody tr:hover { background: var(--bg-card-hover); }
 .jur-bar-fill  { height: 100%; border-radius: 5px; transition: width 0.5s ease; min-width: 2px; }
 .jur-bar-count { width: 60px; font-size: 12px; color: var(--text-secondary); font-weight: 600; }
 
+/* ── Dashboard Two-Col Layout ────────── */
+.dashboard-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.court-label {
+  min-width: 140px;
+}
+
 /* ── Empty state ──────────────────────── */
 .empty-state { text-align: center; padding: 48px; color: var(--text-muted); }
 
@@ -537,7 +547,30 @@ tbody tr:hover { background: var(--bg-card-hover); }
 
   /* Dashboard 2-column → 1 column */
   .dashboard-two-col {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: 1fr;
+  }
+
+  /* Court bar labels: narrower on mobile */
+  .court-label {
+    min-width: 100px;
+    font-size: 11px;
+  }
+
+  /* Jurisdiction bar labels: narrower on mobile */
+  .jur-bar-label {
+    width: 75px;
+    font-size: 11px;
+  }
+  .jur-bar-count {
+    width: 50px;
+    font-size: 11px;
+  }
+
+  /* Alert text: wrap and shrink on mobile */
+  .alert {
+    flex-wrap: wrap;
+    font-size: 12px;
+    line-height: 1.6;
   }
 
   /* Controls bar: stack vertically */
@@ -556,9 +589,21 @@ tbody tr:hover { background: var(--bg-card-hover); }
   .pagination-info { margin-left: 0; }
   .pagination { flex-wrap: wrap; justify-content: center; }
 
-  /* Table: smaller text, scroll */
+  /* Table: fit mobile without horizontal scroll */
   .table-wrap { font-size: 12px; }
-  table { min-width: 500px; }
+  table { min-width: auto; }
+  /* Hide less important columns: Type, Source, Updated */
+  table th:nth-child(3),
+  table td:nth-child(3),
+  table th:nth-child(4),
+  table td:nth-child(4),
+  table th:nth-child(5),
+  table td:nth-child(5) {
+    display: none;
+  }
+  /* Narrower padding in table cells */
+  thead th { padding: 8px 10px; }
+  tbody td { padding: 8px 10px; }
 
   /* Document detail: single column on mobile */
   .doc-detail-content > div { grid-template-columns: 1fr !important; }
@@ -579,4 +624,21 @@ tbody tr:hover { background: var(--bg-card-hover); }
   .source-stats { grid-template-columns: repeat(3, 1fr); gap: 4px; }
   .source-stat { padding: 6px; }
   .source-stat-value { font-size: 15px; }
+
+  .court-label {
+    min-width: 80px;
+    font-size: 10px;
+  }
+  .jur-bar-label {
+    width: 65px;
+    font-size: 10px;
+  }
+  .jur-bar-count {
+    width: 45px;
+    font-size: 10px;
+  }
+
+  .main-content {
+    padding: 60px 12px 20px;
+  }
 }

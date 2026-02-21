@@ -133,7 +133,7 @@ export default function Dashboard({ status, stats }) {
       </div>
 
       {/* Two-section layout: Legislation | Case Law */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div className="dashboard-two-col">
 
         {/* LEFT: Legislation Sources */}
         <div className="card">
@@ -182,7 +182,7 @@ export default function Dashboard({ status, stats }) {
                 .sort((a, b) => b[1] - a[1])
                 .map(([court, count]) => (
                   <div className="jur-bar-row" key={court}>
-                    <div className="jur-bar-label" style={{ minWidth: 140 }}>
+                    <div className="jur-bar-label court-label">
                       {COURT_NAMES[court] || court}
                     </div>
                     <div className="jur-bar-track">
