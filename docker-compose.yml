@@ -49,7 +49,7 @@ services:
     image: cloudflare/cloudflared:latest
     container_name: canlii-tunnel
     restart: unless-stopped
-    command: tunnel run
+    command: tunnel --protocol http2 run
     environment:
       - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
     networks:
