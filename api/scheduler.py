@@ -164,7 +164,11 @@ class SchedulerService:
         limit = config.get('scrape_limit', 500)
         dist_mode = config.get('distribution_mode', 'proportional')
 
-        logger.info(f"Scheduler: triggering scrape (limit={limit}, mode={dist_mode}, sources={source_types})")
+        # Scheduled runs use incremental mode by default (skip recently-checked docs)
+        incremental = True
+        max_age_hours = config.get('interval_hours', 24)
+
+        logger.info(f"Scheduler: triggering scrape (limit={limit}, mode={dist_mode}, sources={source_types}, incremental={incremental}, max_age={max_age_hours}h)")
 
         success, msg = scraper_manager.start_scraping(
             engine="fast",
@@ -172,6 +176,8 @@ class SchedulerService:
             source_types=source_types,
             distribution_mode=dist_mode,
             trigger_source="scheduler",
+            incremental=incremental,
+            max_age_hours=max_age_hours,
         )
 
         now = datetime.now(timezone.utc)

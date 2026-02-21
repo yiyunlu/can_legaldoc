@@ -54,7 +54,8 @@ CREATE TABLE IF NOT EXISTS documents (
     is_active BOOLEAN DEFAULT true,
     metadata JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now()
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    last_checked_at TIMESTAMPTZ
 );
 
 -- 4. Document versions (content with version tracking)
@@ -101,6 +102,7 @@ CREATE INDEX IF NOT EXISTS idx_documents_source_type ON documents(source_type);
 CREATE INDEX IF NOT EXISTS idx_documents_document_type ON documents(document_type);
 CREATE INDEX IF NOT EXISTS idx_documents_jurisdiction_source ON documents(jurisdiction_code, source_type);
 CREATE INDEX IF NOT EXISTS idx_documents_jurisdiction_doctype ON documents(jurisdiction_code, document_type);
+CREATE INDEX IF NOT EXISTS idx_documents_source_checked ON documents(source_type, last_checked_at ASC NULLS FIRST);
 CREATE INDEX IF NOT EXISTS idx_document_versions_latest ON document_versions(document_id) WHERE is_latest = true;
 CREATE INDEX IF NOT EXISTS idx_document_chunks_version ON document_chunks(version_id);
 CREATE INDEX IF NOT EXISTS idx_scrape_jobs_started_at ON scrape_jobs(started_at DESC);
@@ -125,7 +127,29 @@ CREATE TABLE IF NOT EXISTS scheduler_config (
 );
 INSERT INTO scheduler_config (id) VALUES (1) ON CONFLICT DO NOTHING;
 
--- 9. LZ4 compression for large text columns (PostgreSQL 14+)
+-- 9. Source sync log (per-source incremental tracking)
+CREATE TABLE IF NOT EXISTS source_sync_log (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    source_type TEXT NOT NULL,
+    mode TEXT DEFAULT 'full',
+    trigger_source TEXT DEFAULT 'manual',
+    started_at TIMESTAMPTZ DEFAULT now(),
+    finished_at TIMESTAMPTZ,
+    docs_discovered INTEGER DEFAULT 0,
+    docs_checked INTEGER DEFAULT 0,
+    docs_new INTEGER DEFAULT 0,
+    docs_updated INTEGER DEFAULT 0,
+    docs_unchanged INTEGER DEFAULT 0,
+    docs_failed INTEGER DEFAULT 0,
+    docs_skipped_fresh INTEGER DEFAULT 0,
+    max_age_hours INTEGER,
+    error_message TEXT,
+    notes TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_source_sync_log_source
+    ON source_sync_log (source_type, started_at DESC);
+
+-- 10. LZ4 compression for large text columns (PostgreSQL 14+)
 ALTER TABLE document_versions ALTER COLUMN content_html SET COMPRESSION lz4;
 ALTER TABLE document_versions ALTER COLUMN content_text SET COMPRESSION lz4;
 

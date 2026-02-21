@@ -71,7 +71,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "Canadian Legal Data Platform", "version": "5.10"}
+    return {"status": "ok", "service": "Canadian Legal Data Platform", "version": "5.11"}
 
 
 # ========================================================================
@@ -157,6 +157,26 @@ def get_source_stats():
     except Exception as e:
         raise _safe_500(e, "source stats")
 
+@api_router.get("/sources/freshness", dependencies=[Depends(require_admin)])
+def get_source_freshness():
+    """Get per-source freshness summary (last_checked_at stats + last sync)."""
+    from scraper.db_client import DatabaseClient
+    db = DatabaseClient()
+    try:
+        return db.get_source_freshness()
+    except Exception as e:
+        raise _safe_500(e, "source freshness")
+
+@api_router.get("/sources/sync-history", dependencies=[Depends(require_admin)])
+def get_sync_history(source_type: str = None, limit: int = 20):
+    """Get recent source sync log entries."""
+    from scraper.db_client import DatabaseClient
+    db = DatabaseClient()
+    try:
+        return {"history": db.get_sync_history(source_type=source_type, limit=min(limit, 100))}
+    except Exception as e:
+        raise _safe_500(e, "sync history")
+
 
 # ---- Scraper Control ----
 
@@ -175,6 +195,8 @@ def start_scraper(req: ScraperStartRequest):
         source_types=req.source_types,
         distribution_mode=req.distribution_mode,
         source_estimates=req.source_estimates,
+        incremental=req.incremental,
+        max_age_hours=req.max_age_hours,
     )
     if not success:
         raise HTTPException(status_code=400, detail=msg)

@@ -73,11 +73,12 @@ class DatabaseClient:
                 cur.execute("""
                     INSERT INTO documents
                         (title, citation, source_url, jurisdiction_code, category,
-                         target_id, is_active, metadata, source_type, document_type, updated_at)
+                         target_id, is_active, metadata, source_type, document_type,
+                         updated_at, last_checked_at)
                     VALUES
                         (%(title)s, %(citation)s, %(source_url)s, %(jurisdiction_code)s,
                          %(category)s, %(target_id)s, %(is_active)s, %(metadata)s,
-                         %(source_type)s, %(document_type)s, now())
+                         %(source_type)s, %(document_type)s, now(), now())
                     ON CONFLICT (source_url) DO UPDATE SET
                         title = EXCLUDED.title,
                         citation = EXCLUDED.citation,
@@ -87,7 +88,8 @@ class DatabaseClient:
                         metadata = EXCLUDED.metadata,
                         source_type = EXCLUDED.source_type,
                         document_type = EXCLUDED.document_type,
-                        updated_at = now()
+                        updated_at = now(),
+                        last_checked_at = now()
                     RETURNING id
                 """, {
                     'title': doc_data.get('title'),
@@ -152,6 +154,246 @@ class DatabaseClient:
     def upsert_statute(self, statute_data: Dict) -> bool:
         """[DEPRECATED] Backward-compatible alias."""
         return self.upsert_document_v3(statute_data)
+
+    # ========== Incremental Update Operations ==========
+
+    def get_fresh_urls(self, urls: List[str], max_age_hours: int = 24) -> set:
+        """Return subset of URLs that were checked within max_age_hours.
+        These can be skipped in incremental mode.
+
+        Args:
+            urls: list of source_urls to check
+            max_age_hours: how old a check can be before it's considered stale
+
+        Returns:
+            set of URLs that are still fresh (recently checked)
+        """
+        if not urls:
+            return set()
+
+        fresh_set = set()
+        chunk_size = 500
+        try:
+            with self._get_conn() as conn:
+                cur = conn.cursor()
+                for i in range(0, len(urls), chunk_size):
+                    chunk = urls[i:i + chunk_size]
+                    placeholders = ','.join(['%s'] * len(chunk))
+                    cur.execute(f"""
+                        SELECT source_url FROM documents
+                        WHERE source_url IN ({placeholders})
+                          AND last_checked_at > now() - interval '{int(max_age_hours)} hours'
+                    """, chunk)
+                    for row in cur.fetchall():
+                        fresh_set.add(row[0])
+        except Exception as e:
+            logger.error(f"get_fresh_urls failed: {e}")
+
+        return fresh_set
+
+    def get_known_urls_for_source(self, source_type: str) -> set:
+        """Get all known source_urls for a given source_type.
+        Used to detect new vs existing documents during discovery.
+
+        Returns:
+            set of source_urls
+        """
+        try:
+            with self._get_conn() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT source_url FROM documents WHERE source_type = %s",
+                    (source_type,)
+                )
+                return {row[0] for row in cur.fetchall()}
+        except Exception as e:
+            logger.error(f"get_known_urls_for_source failed: {e}")
+            return set()
+
+    def get_stale_urls_for_source(self, source_type: str,
+                                   max_age_hours: int = 24,
+                                   limit: Optional[int] = None) -> List[str]:
+        """Get source_urls for docs that haven't been checked recently,
+        ordered by oldest-checked first (priority queue).
+
+        Args:
+            source_type: adapter source_type
+            max_age_hours: threshold for staleness
+            limit: max URLs to return
+
+        Returns:
+            list of source_urls, oldest-checked first
+        """
+        try:
+            with self._get_conn() as conn:
+                cur = conn.cursor()
+                limit_clause = f"LIMIT {int(limit)}" if limit else ""
+                cur.execute(f"""
+                    SELECT source_url FROM documents
+                    WHERE source_type = %s
+                      AND (last_checked_at IS NULL
+                           OR last_checked_at < now() - interval '{int(max_age_hours)} hours')
+                    ORDER BY last_checked_at ASC NULLS FIRST
+                    {limit_clause}
+                """, (source_type,))
+                return [row[0] for row in cur.fetchall()]
+        except Exception as e:
+            logger.error(f"get_stale_urls_for_source failed: {e}")
+            return []
+
+    # ========== Source Sync Logging ==========
+
+    def create_sync_log(self, source_type: str, mode: str = 'full',
+                        trigger_source: str = 'manual',
+                        max_age_hours: Optional[int] = None) -> Optional[str]:
+        """Create a source_sync_log entry, return its ID."""
+        try:
+            with self._get_conn() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    INSERT INTO source_sync_log
+                        (source_type, mode, trigger_source, max_age_hours)
+                    VALUES (%s, %s, %s, %s)
+                    RETURNING id
+                """, (source_type, mode, trigger_source, max_age_hours))
+                row = cur.fetchone()
+                return str(row[0]) if row else None
+        except Exception as e:
+            logger.warning(f"Failed to create sync log: {e}")
+            return None
+
+    def update_sync_log(self, sync_id: str, **kwargs):
+        """Update a source_sync_log entry with stats."""
+        if not sync_id:
+            return
+        allowed = {
+            'docs_discovered', 'docs_checked', 'docs_new', 'docs_updated',
+            'docs_unchanged', 'docs_failed', 'docs_skipped_fresh',
+            'error_message', 'notes',
+        }
+        filtered = {k: v for k, v in kwargs.items() if k in allowed}
+        if not filtered:
+            return
+        try:
+            set_clauses = [f"{k} = %s" for k in filtered]
+            values = list(filtered.values())
+            with self._get_conn() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    f"UPDATE source_sync_log SET {', '.join(set_clauses)} WHERE id = %s",
+                    values + [sync_id]
+                )
+        except Exception as e:
+            logger.warning(f"Failed to update sync log: {e}")
+
+    def finalize_sync_log(self, sync_id: str, **kwargs):
+        """Mark sync log as finished with final stats."""
+        if not sync_id:
+            return
+        allowed = {
+            'docs_discovered', 'docs_checked', 'docs_new', 'docs_updated',
+            'docs_unchanged', 'docs_failed', 'docs_skipped_fresh',
+            'error_message', 'notes',
+        }
+        filtered = {k: v for k, v in kwargs.items() if k in allowed}
+        try:
+            set_clauses = ["finished_at = now()"]
+            values = []
+            for k, v in filtered.items():
+                set_clauses.append(f"{k} = %s")
+                values.append(v)
+            with self._get_conn() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    f"UPDATE source_sync_log SET {', '.join(set_clauses)} WHERE id = %s",
+                    values + [sync_id]
+                )
+        except Exception as e:
+            logger.warning(f"Failed to finalize sync log: {e}")
+
+    def get_source_freshness(self) -> Dict:
+        """Get per-source freshness summary for the dashboard.
+
+        Returns dict with per-source stats:
+          - total_docs, checked_24h, checked_7d, never_checked
+          - oldest_check, newest_check
+          - last_sync (from source_sync_log)
+        """
+        try:
+            with self._get_conn() as conn:
+                cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+                # Per-source freshness from documents table
+                cur.execute("""
+                    SELECT
+                        source_type,
+                        COUNT(*) AS total_docs,
+                        COUNT(*) FILTER (
+                            WHERE last_checked_at > now() - interval '24 hours'
+                        ) AS checked_24h,
+                        COUNT(*) FILTER (
+                            WHERE last_checked_at > now() - interval '7 days'
+                        ) AS checked_7d,
+                        COUNT(*) FILTER (
+                            WHERE last_checked_at IS NULL
+                        ) AS never_checked,
+                        MIN(last_checked_at) AS oldest_check,
+                        MAX(last_checked_at) AS newest_check
+                    FROM documents
+                    WHERE source_type IS NOT NULL
+                    GROUP BY source_type
+                    ORDER BY source_type
+                """)
+                freshness = {}
+                for r in cur.fetchall():
+                    row = dict(r)
+                    st = row.pop('source_type')
+                    for k, v in row.items():
+                        if hasattr(v, 'isoformat'):
+                            row[k] = v.isoformat()
+                    freshness[st] = row
+
+                # Latest sync per source from source_sync_log
+                cur.execute("""
+                    SELECT DISTINCT ON (source_type)
+                        source_type, mode, started_at, finished_at,
+                        docs_discovered, docs_new, docs_updated,
+                        docs_unchanged, docs_skipped_fresh, docs_failed
+                    FROM source_sync_log
+                    WHERE finished_at IS NOT NULL
+                    ORDER BY source_type, started_at DESC
+                """)
+                for r in cur.fetchall():
+                    row = self._serialize_row(r)
+                    st = row.pop('source_type')
+                    if st in freshness:
+                        freshness[st]['last_sync'] = row
+
+                return {"sources": freshness}
+        except Exception as e:
+            logger.error(f"get_source_freshness failed: {e}")
+            return {"sources": {}}
+
+    def get_sync_history(self, source_type: str = None, limit: int = 20) -> List[Dict]:
+        """Get recent sync log entries."""
+        try:
+            with self._get_conn() as conn:
+                cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                if source_type:
+                    cur.execute("""
+                        SELECT * FROM source_sync_log
+                        WHERE source_type = %s
+                        ORDER BY started_at DESC LIMIT %s
+                    """, (source_type, limit))
+                else:
+                    cur.execute("""
+                        SELECT * FROM source_sync_log
+                        ORDER BY started_at DESC LIMIT %s
+                    """, (limit,))
+                return [self._serialize_row(r) for r in cur.fetchall()]
+        except Exception as e:
+            logger.error(f"get_sync_history failed: {e}")
+            return []
 
     # ========== Query Operations ==========
 

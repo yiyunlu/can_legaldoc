@@ -34,6 +34,9 @@ class ScraperStartRequest(BaseModel):
     distribution_mode: Optional[str] = "proportional"
     # Estimated totals for proportional mode (source_type -> count)
     source_estimates: Optional[Dict[str, int]] = None
+    # Incremental mode: only fetch docs not checked within max_age_hours
+    incremental: Optional[bool] = False
+    max_age_hours: Optional[int] = 24
 
 class SchedulerConfigRequest(BaseModel):
     enabled: Optional[bool] = None

@@ -45,6 +45,9 @@ class ScraperManager:
         self.source_types_filter: Optional[List[str]] = None
         self.distribution_mode: str = "proportional"
         self.source_estimates: Optional[Dict[str, int]] = None
+        # Incremental mode fields
+        self.incremental: bool = False
+        self.max_age_hours: int = 24
 
         self.trigger_source: str = "manual"
         self.db_client.cleanup_stale_jobs()
@@ -55,7 +58,9 @@ class ScraperManager:
                        source_types: Optional[List[str]] = None,
                        distribution_mode: Optional[str] = "proportional",
                        source_estimates: Optional[Dict[str, int]] = None,
-                       trigger_source: str = "manual"):
+                       trigger_source: str = "manual",
+                       incremental: bool = False,
+                       max_age_hours: int = 24):
         if self.is_running:
             return False, "Scraper is already running"
 
@@ -68,6 +73,8 @@ class ScraperManager:
         self.distribution_mode = distribution_mode or "proportional"
         self.source_estimates = source_estimates
         self.trigger_source = trigger_source
+        self.incremental = incremental
+        self.max_age_hours = max_age_hours
         self.stats = {'total': 0, 'success': 0, 'failed': 0, 'skipped': 0}
         self.stop_event.clear()
         self.is_running = True
@@ -76,7 +83,8 @@ class ScraperManager:
         # Default to multi-source when config.sources exist (v5.x standard)
         use_multi = bool(source_type or source_types or config.sources)
         if use_multi:
-            self.message = f"Starting multi-source ({source_type or source_types or 'all'})..."
+            mode_str = "incremental" if incremental else "full"
+            self.message = f"Starting multi-source {mode_str} ({source_type or source_types or 'all'})..."
             self.thread = threading.Thread(target=self._run_multi_source)
         else:
             self.message = f"Starting ({engine}, headless={headless})..."
@@ -153,13 +161,21 @@ class ScraperManager:
     # ========== Multi-Source Run Loop ==========
 
     def _run_multi_source(self):
-        """Run adapters from the sources config."""
+        """Run adapters from the sources config.
+
+        Supports two modes:
+        - Full mode (default): discover all → checkpoint filter → fetch all
+        - Incremental mode: discover all → DB freshness filter → fetch only stale
+        """
         try:
-            self.message = "Running (multi-source)"
+            mode_str = "incremental" if self.incremental else "full"
+            self.message = f"Running ({mode_str})"
             from scraper.adapters import get_adapter
 
             # Create job record
-            mode_label = f"[{self.trigger_source}] multi-source ({self.distribution_mode})"
+            mode_label = f"[{self.trigger_source}] {mode_str} ({self.distribution_mode})"
+            if self.incremental:
+                mode_label += f" max_age={self.max_age_hours}h"
             self.job_id = self.db_client.create_job(mode_label)
 
             # Filter sources
@@ -192,12 +208,27 @@ class ScraperManager:
                 per_source_limit = source_limits.get(source_type)
                 self.current_source = source_cfg.get('name', source_type)
                 self.current_target = self.current_source
-                logger.info(f"=== Starting source: {self.current_source} ({source_type}) | limit={per_source_limit} ===")
+                logger.info(f"=== Starting source: {self.current_source} ({source_type}) | mode={mode_str} limit={per_source_limit} ===")
+
+                # Create per-source sync log
+                sync_id = self.db_client.create_sync_log(
+                    source_type=source_type,
+                    mode=mode_str,
+                    trigger_source=self.trigger_source,
+                    max_age_hours=self.max_age_hours if self.incremental else None,
+                )
+
+                source_stats = {
+                    'discovered': 0, 'checked': 0, 'new': 0,
+                    'updated': 0, 'unchanged': 0, 'failed': 0,
+                    'skipped_fresh': 0,
+                }
 
                 try:
                     adapter = get_adapter(source_type, **source_cfg.get('params', {}))
                 except Exception as e:
                     logger.error(f"Failed to create adapter for {source_type}: {e}")
+                    self.db_client.finalize_sync_log(sync_id, error_message=str(e))
                     continue
 
                 # Determine discovery limit
@@ -210,29 +241,55 @@ class ScraperManager:
 
                 try:
                     doc_list = adapter.discover_documents(limit=discover_limit)
+                    source_stats['discovered'] = len(doc_list)
                     logger.info(f"Discovered {len(doc_list)} documents from {source_type}")
                 except Exception as e:
                     logger.error(f"Discovery failed for {source_type}: {e}")
+                    self.db_client.finalize_sync_log(sync_id, error_message=str(e),
+                                                      docs_discovered=0)
                     continue
 
                 self.stats['total'] += len(doc_list)
 
-                # Filter already-checkpointed URLs
+                # ---- Filtering: incremental (DB-backed) vs full (checkpoint-based) ----
                 doc_urls = [d.source_url for d in doc_list]
-                already_scraped = self.checkpoint.filter_scraped_urls(doc_urls)
-                to_fetch = [d for d in doc_list if d.source_url not in already_scraped]
-                skipped = len(doc_list) - len(to_fetch)
-                self.stats['skipped'] += skipped
-                if skipped:
-                    logger.info(f"Skipped {skipped} already-processed documents")
+
+                if self.incremental:
+                    # Incremental: skip docs checked within max_age_hours
+                    fresh_urls = self.db_client.get_fresh_urls(doc_urls, self.max_age_hours)
+                    to_fetch = [d for d in doc_list if d.source_url not in fresh_urls]
+                    skipped_fresh = len(fresh_urls)
+                    source_stats['skipped_fresh'] = skipped_fresh
+                    self.stats['skipped'] += skipped_fresh
+                    if skipped_fresh:
+                        logger.info(f"Incremental: skipped {skipped_fresh} fresh docs (checked within {self.max_age_hours}h)")
+                else:
+                    # Full mode: use session checkpoint (legacy behavior)
+                    already_scraped = self.checkpoint.filter_scraped_urls(doc_urls)
+                    to_fetch = [d for d in doc_list if d.source_url not in already_scraped]
+                    skipped = len(doc_list) - len(to_fetch)
+                    self.stats['skipped'] += skipped
+                    if skipped:
+                        logger.info(f"Skipped {skipped} already-processed documents (checkpoint)")
+
+                if not to_fetch:
+                    logger.info("All documents up-to-date for this source")
+                    self.db_client.finalize_sync_log(sync_id,
+                        docs_discovered=source_stats['discovered'],
+                        docs_skipped_fresh=source_stats['skipped_fresh'])
+                    continue
 
                 # Determine fetch limit
                 fetch_limit = per_source_limit if per_source_limit is not None else (
                     (self.scrape_limit - session_total) if self.scrape_limit else None
                 )
-                source_fetched = 0
 
-                # Fetch documents
+                # Ensure jurisdiction exists
+                jur = adapter.get_jurisdiction()
+                if jur and jur != 'multi':
+                    self.db_client.ensure_jurisdiction(jur)
+
+                # Fetch and save documents
                 for doc_content in adapter.fetch_documents_batch(
                     to_fetch, limit=fetch_limit, stop_event=self.stop_event
                 ):
@@ -241,9 +298,10 @@ class ScraperManager:
                     if self.scrape_limit and session_total >= self.scrape_limit:
                         break
 
-                    # Save to database
                     upsert_data = doc_content.to_upsert_dict(source_type=source_type)
-                    self.db_client.ensure_jurisdiction(doc_content.jurisdiction_code)
+
+                    if doc_content.jurisdiction_code:
+                        self.db_client.ensure_jurisdiction(doc_content.jurisdiction_code)
 
                     try:
                         success = self.db_client.upsert_document_v3(upsert_data)
@@ -251,18 +309,32 @@ class ScraperManager:
                             self.stats['success'] += 1
                             self.checkpoint.add(doc_content.source_url)
                             session_total += 1
-                            source_fetched += 1
+                            source_stats['checked'] += 1
                         else:
                             self.stats['failed'] += 1
+                            source_stats['failed'] += 1
                     except Exception as e:
                         logger.error(f"DB save failed: {e}")
                         self.stats['failed'] += 1
+                        source_stats['failed'] += 1
 
                     if (self.stats['success'] + self.stats['failed']) % 50 == 0:
                         self._update_job_stats()
 
                 self._update_job_stats()
-                logger.info(f"=== Finished source: {self.current_source} | fetched={source_fetched} ===")
+
+                # Finalize per-source sync log
+                self.db_client.finalize_sync_log(sync_id,
+                    docs_discovered=source_stats['discovered'],
+                    docs_checked=source_stats['checked'],
+                    docs_failed=source_stats['failed'],
+                    docs_skipped_fresh=source_stats['skipped_fresh'],
+                )
+
+                logger.info(f"=== Finished source: {self.current_source} | "
+                            f"discovered={source_stats['discovered']} "
+                            f"checked={source_stats['checked']} "
+                            f"skipped_fresh={source_stats['skipped_fresh']} ===")
 
             self.message = "Finished"
         except Exception as e:
