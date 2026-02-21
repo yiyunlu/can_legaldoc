@@ -6,6 +6,11 @@ from abc import ABC, abstractmethod
 from typing import List, Optional, Generator
 from dataclasses import dataclass, field
 import threading
+import time
+import logging
+import requests
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -105,6 +110,49 @@ class BaseSourceAdapter(ABC):
         Returns:
             DocumentContent with full text, or None on failure
         """
+
+    def _request_with_retry(self, session: requests.Session, url: str,
+                              method: str = "GET", max_retries: int = 3,
+                              base_delay: float = 1.0, **kwargs) -> requests.Response:
+        """HTTP request with exponential backoff retry.
+
+        Retries on: connection errors, timeouts, 429, 500-504.
+        Does NOT retry on: 4xx client errors (except 429).
+
+        Args:
+            session: requests.Session to use
+            url: request URL
+            method: HTTP method
+            max_retries: max attempts (total = max_retries + 1)
+            base_delay: initial delay in seconds (doubles each retry)
+            **kwargs: passed to session.request()
+
+        Returns:
+            requests.Response
+
+        Raises:
+            requests.RequestException on final failure
+        """
+        last_error = None
+        for attempt in range(max_retries + 1):
+            try:
+                resp = session.request(method, url, **kwargs)
+                if resp.status_code == 429 or resp.status_code >= 500:
+                    if attempt < max_retries:
+                        delay = base_delay * (2 ** attempt)
+                        logger.warning(f"HTTP {resp.status_code} from {url}, retry {attempt+1}/{max_retries} in {delay:.1f}s")
+                        time.sleep(delay)
+                        continue
+                return resp
+            except (requests.ConnectionError, requests.Timeout) as e:
+                last_error = e
+                if attempt < max_retries:
+                    delay = base_delay * (2 ** attempt)
+                    logger.warning(f"{type(e).__name__} for {url}, retry {attempt+1}/{max_retries} in {delay:.1f}s")
+                    time.sleep(delay)
+                    continue
+                raise
+        raise last_error or requests.RequestException(f"Failed after {max_retries} retries: {url}")
 
     def fetch_documents_batch(
         self,

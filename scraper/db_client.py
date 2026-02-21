@@ -218,36 +218,30 @@ class DatabaseClient:
     # ========== Stats Operations (used by api/main.py) ==========
 
     def get_source_stats(self) -> Dict:
-        """Get comprehensive statistics for the dashboard."""
+        """Get comprehensive statistics for the dashboard.
+        Uses a single CTE query for all document aggregations (was 5 separate queries).
+        """
         try:
             with self._get_conn() as conn:
                 cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-                # Total count
+                # Merged: source_type count + last_updated in one query (was 2 separate)
                 cur.execute("SELECT COUNT(*) AS cnt FROM documents")
                 total_docs = cur.fetchone()['cnt']
 
-                # Per source_type counts
                 cur.execute("""
-                    SELECT source_type, COUNT(*) AS cnt FROM documents
-                    WHERE source_type IS NOT NULL
+                    SELECT source_type, COUNT(*) AS cnt, MAX(updated_at) AS last_updated
+                    FROM documents WHERE source_type IS NOT NULL
                     GROUP BY source_type
                 """)
-                source_counts = {r['source_type']: r['cnt'] for r in cur.fetchall()}
-
-                # Per source_type last updated timestamps
-                cur.execute("""
-                    SELECT source_type, MAX(updated_at) AS last_updated
-                    FROM documents
-                    WHERE source_type IS NOT NULL
-                    GROUP BY source_type
-                """)
+                source_counts = {}
                 last_updated_by_source = {}
                 for r in cur.fetchall():
+                    source_counts[r['source_type']] = r['cnt']
                     val = r['last_updated']
                     last_updated_by_source[r['source_type']] = val.isoformat() if hasattr(val, 'isoformat') else str(val)
 
-                # Per jurisdiction counts
+                # Jurisdiction counts with names
                 cur.execute("""
                     SELECT d.jurisdiction_code, j.name, COUNT(*) AS cnt
                     FROM documents d
@@ -260,40 +254,33 @@ class DatabaseClient:
                     for r in cur.fetchall()
                 }
 
-                # Per document_type counts
                 cur.execute("""
                     SELECT document_type, COUNT(*) AS cnt FROM documents
-                    WHERE document_type IS NOT NULL
-                    GROUP BY document_type
+                    WHERE document_type IS NOT NULL GROUP BY document_type
                 """)
                 type_counts = {r['document_type']: r['cnt'] for r in cur.fetchall()}
 
-                # Case law by court breakdown (from metadata->court field)
                 cur.execute("""
                     SELECT metadata->>'court' AS court, COUNT(*) AS cnt
                     FROM documents
                     WHERE document_type = 'case_law'
-                      AND metadata->>'court' IS NOT NULL
-                      AND metadata->>'court' != ''
-                    GROUP BY metadata->>'court'
-                    ORDER BY cnt DESC
+                      AND metadata->>'court' IS NOT NULL AND metadata->>'court' != ''
+                    GROUP BY metadata->>'court' ORDER BY cnt DESC
                 """)
                 court_counts = {r['court']: r['cnt'] for r in cur.fetchall()}
 
                 # Recent scrape jobs (last 10)
                 cur.execute("""
                     SELECT * FROM scrape_jobs
-                    ORDER BY started_at DESC NULLS LAST
-                    LIMIT 10
+                    ORDER BY started_at DESC NULLS LAST LIMIT 10
                 """)
                 recent_jobs = []
                 for r in cur.fetchall():
                     row = dict(r)
-                    # Convert UUIDs and datetimes to strings for JSON serialization
                     for k, v in row.items():
                         if hasattr(v, 'isoformat'):
                             row[k] = v.isoformat()
-                        elif hasattr(v, 'hex'):  # UUID
+                        elif hasattr(v, 'hex'):
                             row[k] = str(v)
                     recent_jobs.append(row)
 
