@@ -157,9 +157,11 @@ class BCLawsAPIAdapter(BaseSourceAdapter):
     def _resolve_document_id(self, dir_id: str, letter_dir_id: str) -> Optional[str]:
         """Resolve the actual fetchable document ID from a statute directory.
 
-        The CiviX directory uses directory IDs (e.g. '96001') but the actual
-        document has a different ID (e.g. '96001_01' or '21033'). We fetch the
-        statute directory listing to find the first <document> child.
+        CiviX has two directory patterns:
+          SIMPLE:  dir → <document> child  (e.g. 96001 → 96001_01)
+          NESTED:  dir → <dir>Act</dir> → <document>*_multi</document>
+                   Used by large multi-part acts like Family Law Act,
+                   Business Corporations Act, Community Charter, etc.
 
         Results are cached to avoid redundant HTTP requests.
         """
@@ -173,11 +175,43 @@ class BCLawsAPIAdapter(BaseSourceAdapter):
             resp.raise_for_status()
             root = etree.fromstring(resp.content)
 
+            # Pattern 1 (SIMPLE): direct <document> child
             for child in root:
                 if self._local_tag(child) == 'document':
                     real_id = self._get_child_text(child, 'CIVIX_DOCUMENT_ID')
                     if real_id:
                         break
+
+            # Pattern 2 (NESTED): look for "Act" sub-directory, then find _multi doc
+            if not real_id:
+                act_dir_id = None
+                for child in root:
+                    if self._local_tag(child) == 'dir':
+                        if self._get_child_text(child, 'CIVIX_DOCUMENT_TITLE') == 'Act':
+                            act_dir_id = self._get_child_text(child, 'CIVIX_DOCUMENT_ID')
+                            break
+
+                if act_dir_id:
+                    act_url = f"{stat_url}{act_dir_id}/"
+                    resp2 = self.session.get(act_url, timeout=config.TIMEOUT)
+                    resp2.raise_for_status()
+                    act_root = etree.fromstring(resp2.content)
+
+                    # Prefer the combined _multi document, fall back to first document
+                    first_doc_id = None
+                    for child in act_root:
+                        if self._local_tag(child) == 'document':
+                            cid = self._get_child_text(child, 'CIVIX_DOCUMENT_ID')
+                            if not first_doc_id:
+                                first_doc_id = cid
+                            if '_multi' in cid:
+                                real_id = cid
+                                break
+                    if not real_id and first_doc_id:
+                        real_id = first_doc_id
+
+                    if real_id:
+                        logger.debug(f"Resolved nested act {dir_id} -> {act_dir_id} -> {real_id}")
         except Exception as e:
             logger.debug(f"Failed to resolve document ID for {dir_id}: {e}")
 
