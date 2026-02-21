@@ -1,10 +1,34 @@
 const API_BASE = '/api';
 
+/* ── Auth helpers ────────────────────────────────────── */
+const AUTH_KEY = 'canlegal_api_key';
+
+export function getStoredKey() {
+    return localStorage.getItem(AUTH_KEY) || '';
+}
+
+export function setStoredKey(key) {
+    if (key) localStorage.setItem(AUTH_KEY, key);
+    else localStorage.removeItem(AUTH_KEY);
+}
+
+export function clearStoredKey() {
+    localStorage.removeItem(AUTH_KEY);
+}
+
+function authHeaders() {
+    const key = getStoredKey();
+    return key ? { Authorization: `Bearer ${key}` } : {};
+}
+
 /* Track backend reachability to avoid console spam */
 let _backendOnline = true;
 export function isBackendOnline() { return _backendOnline; }
 
 async function request(url, options = {}, _retries = 3) {
+    // Merge auth headers into every request
+    options.headers = { ...authHeaders(), ...options.headers };
+
     let res;
     try {
         res = await fetch(`${API_BASE}${url}`, options);
@@ -25,7 +49,9 @@ async function request(url, options = {}, _retries = 3) {
         }
         if (res.status >= 500) _backendOnline = false;
         const err = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(err.detail || 'Request failed');
+        const error = new Error(err.detail || 'Request failed');
+        error.status = res.status;
+        throw error;
     }
     _backendOnline = true;
     return res.json();
@@ -42,6 +68,19 @@ function post(url, body) {
 export const api = {
     // Health / version (uses /health which is outside /api prefix)
     getHealth:            ()       => fetch('/health').then(r => r.ok ? r.json() : null).catch(() => null),
+
+    // Auth
+    getAuthStatus:        ()       => request('/auth/status'),
+    verifyKey: (key)      => fetch(`${API_BASE}/auth/verify`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${key}` },
+    }).then(async r => {
+        if (!r.ok) {
+            const err = await r.json().catch(() => ({ detail: r.statusText }));
+            throw new Error(err.detail || 'Invalid key');
+        }
+        return r.json();
+    }),
 
     // Status
     getStatus:            ()       => request('/status'),

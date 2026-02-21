@@ -1,4 +1,4 @@
-# Canadian Legal Data Platform (v5.7)
+# Canadian Legal Data Platform (v5.8)
 
 面向加拿大少数族裔的法律咨询 Chatbot 数据基础设施。采集全国 13 省/地区 + 联邦的法律法规及历史判例，构建支持 RAG 检索增强生成的大规模法律知识库。
 
@@ -47,7 +47,7 @@ docker compose up -d --build
 
 # 4. 验证
 curl http://localhost:8000/health
-# → {"status":"ok","service":"Canadian Legal Data Platform","version":"5.7"}
+# → {"status":"ok","service":"Canadian Legal Data Platform","version":"5.8"}
 ```
 
 访问 `http://localhost:8000` 进入 Web 管理面板。
@@ -57,6 +57,7 @@ curl http://localhost:8000/health
 | 变量 | 必填 | 说明 |
 | :--- | :--- | :--- |
 | `POSTGRES_PASSWORD` | ✅ | PostgreSQL 数据库密码 |
+| `ADMIN_API_KEY` | 推荐 | 管理端 API 密钥（留空 = 开发模式，跳过认证） |
 | `CLOUDFLARE_TUNNEL_TOKEN` | 否 | Cloudflare Tunnel token（外网访问） |
 | `ALLOWED_ORIGIN` | 否 | CORS 允许的域名 |
 | `SUPABASE_URL` / `SUPABASE_KEY` | 否 | 仅用于旧版迁移 / Keepalive |
@@ -109,17 +110,19 @@ docker exec canlii-platform python main_multi.py --dry-run
 ### API 方式
 
 ```bash
-# 启动采集
+# 启动采集 (需要 API Key)
 curl -X POST http://localhost:8000/api/scraper/start \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{"source_type": "justice_canada_xml", "scrape_limit": 100}'
 
-# 查看状态
+# 查看状态 (公开)
 curl http://localhost:8000/api/status
 
-# 停止采集
+# 停止采集 (需要 API Key)
 curl -X POST http://localhost:8000/api/scraper/stop \
-  -H "Content-Type: application/json" -d '{}'
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" -d '{}'
 ```
 
 ### 自动调度
@@ -130,11 +133,13 @@ curl -X POST http://localhost:8000/api/scraper/stop \
 # 启用每日自动采集（UTC 02:00，限额 500）
 curl -X POST http://localhost:8000/api/scheduler \
   -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer YOUR_API_KEY' \
   -d '{"enabled": true, "schedule_type": "daily", "daily_time": "02:00", "scrape_limit": 500}'
 
 # 手动触发一次调度采集
 curl -X POST http://localhost:8000/api/scheduler/trigger \
-  -H 'Content-Type: application/json' -d '{}'
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer YOUR_API_KEY' -d '{}'
 ```
 
 也可以在 Web 面板的 **Settings** 页面图形化配置。
@@ -281,23 +286,27 @@ curl -X POST http://localhost:8000/api/scheduler/trigger \
 
 ## 🔌 API 端点
 
-| 方法 | 路径 | 说明 |
-| :--- | :--- | :--- |
-| GET | `/health` | 健康检查 + 版本号 |
-| GET | `/api/status` | 采集器状态 + 调度器信息 |
-| GET | `/api/sources` | 已配置数据源列表 |
-| GET | `/api/sources/available` | 所有可用适配器 |
-| GET | `/api/sources/stats` | 文档统计（按来源/辖区/类型） |
-| POST | `/api/sources` | 更新数据源配置 |
-| POST | `/api/scraper/start` | 启动采集 |
-| POST | `/api/scraper/stop` | 停止采集 |
-| GET | `/api/scheduler` | 获取调度器配置 |
-| POST | `/api/scheduler` | 更新调度器配置 |
-| POST | `/api/scheduler/trigger` | 手动触发一次调度采集 |
-| GET | `/api/jobs` | 分页查询运行历史 |
-| GET | `/api/documents` | 分页查询文档列表（支持搜索/筛选） |
-| GET | `/api/documents/{id}` | 文档详情（元数据 + 版本信息） |
-| GET | `/api/debug/db` | 数据库诊断报告（表大小、行数、内容统计、索引） |
+| 方法 | 路径 | 认证 | 说明 |
+| :--- | :--- | :--- | :--- |
+| GET | `/health` | — | 健康检查 + 版本号 |
+| GET | `/api/auth/status` | — | 检查认证是否启用 |
+| POST | `/api/auth/verify` | Bearer | 验证 API 密钥 |
+| GET | `/api/status` | — | 采集器状态 + 调度器信息 |
+| GET | `/api/sources` | — | 已配置数据源列表 |
+| GET | `/api/sources/available` | — | 所有可用适配器 |
+| GET | `/api/sources/stats` | — | 文档统计（按来源/辖区/类型） |
+| POST | `/api/sources` | Bearer | 更新数据源配置 |
+| POST | `/api/scraper/start` | Bearer | 启动采集 |
+| POST | `/api/scraper/stop` | Bearer | 停止采集 |
+| GET | `/api/scheduler` | — | 获取调度器配置 |
+| POST | `/api/scheduler` | Bearer | 更新调度器配置 |
+| POST | `/api/scheduler/trigger` | Bearer | 手动触发一次调度采集 |
+| GET | `/api/jobs` | — | 分页查询运行历史 |
+| GET | `/api/documents` | — | 分页查询文档列表（支持搜索/筛选） |
+| GET | `/api/documents/{id}` | — | 文档详情（元数据 + 版本信息） |
+| GET | `/api/debug/db` | Bearer | 数据库诊断报告（表大小、行数、内容统计、索引） |
+
+> **认证说明**: 标记 "Bearer" 的端点需要 `Authorization: Bearer <ADMIN_API_KEY>` 请求头。未设置 `ADMIN_API_KEY` 时为开发模式，所有端点无需认证。
 
 ---
 
@@ -345,6 +354,7 @@ class YourSourceAdapter(BaseSourceAdapter):
 - [x] **Phase 5**: 5 省适配器 — MB, NL, NS, NB, ON (v5.5)
 - [x] **Phase 6a**: 3 地区 PDF 适配器 — YT, NT, NU (v5.6)
 - [x] **Phase 6b**: 3 省适配器 — SK, PE, QC (v5.7) ✅ **全 10 省 + 3 地区完整覆盖**
+- [x] **Phase 6c**: API Key 认证 + BC Laws 嵌套法案修复 (v5.8)
 - [ ] **Phase 7**: RAG 向量搜索集成 (pgvector)
 
 ---
@@ -361,5 +371,5 @@ class YourSourceAdapter(BaseSourceAdapter):
 | 文件 | 说明 |
 | :--- | :--- |
 | [DEPLOY.md](./DEPLOY.md) | 部署指南（PVE + Docker + Cloudflare Tunnel） |
-| [CHANGELOG.md](./CHANGELOG.md) | 版本更新日志 (v5.0 → v5.7) |
+| [CHANGELOG.md](./CHANGELOG.md) | 版本更新日志 (v5.0 → v5.8) |
 | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | 常见问题排查 |

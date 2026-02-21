@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
-import { api, isBackendOnline } from './api';
+import { api, isBackendOnline, getStoredKey, setStoredKey, clearStoredKey } from './api';
 import Dashboard from './pages/Dashboard';
 import DataSources from './pages/DataSources';
 import RunHistory from './pages/RunHistory';
@@ -15,6 +15,56 @@ const TABS = [
   { id: 'settings',   label: 'Settings',      icon: '\u2699' },
 ];
 
+/* ═════════════════════════════════════════════
+   Login Gate — shown when auth is required
+   and no valid key is stored
+   ═════════════════════════════════════════════ */
+function LoginGate({ onLogin }) {
+  const [key, setKey] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!key.trim()) return;
+    setLoading(true);
+    setError('');
+    try {
+      await api.verifyKey(key.trim());
+      setStoredKey(key.trim());
+      onLogin();
+    } catch (err) {
+      setError(err.message || 'Invalid API key');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="login-overlay">
+      <form className="login-box" onSubmit={handleSubmit}>
+        <div className="login-brand">Canadian Legal Data</div>
+        <div className="login-subtitle">Admin Authentication Required</div>
+        <input
+          className="input login-input"
+          type="password"
+          placeholder="Enter API key"
+          value={key}
+          onChange={e => setKey(e.target.value)}
+          autoFocus
+        />
+        {error && <div className="login-error">{error}</div>}
+        <button className="btn btn-primary login-btn" type="submit" disabled={loading || !key.trim()}>
+          {loading ? 'Verifying...' : 'Unlock'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+/* ═════════════════════════════════════════════
+   Main App
+   ═════════════════════════════════════════════ */
 export default function App() {
   const [tab, setTab] = useState('dashboard');
   const [status, setStatus] = useState(null);
@@ -22,8 +72,50 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [online, setOnline] = useState(true);
 
+  // Auth state: null = checking, true = needs login, false = ready
+  const [authRequired, setAuthRequired] = useState(null);
+
+  // Check if auth is required and whether stored key is valid
+  useEffect(() => {
+    (async () => {
+      try {
+        const { auth_required } = await api.getAuthStatus();
+        if (!auth_required) {
+          setAuthRequired(false);  // dev mode, no auth needed
+          return;
+        }
+        // Auth is required — check if we have a stored key
+        const stored = getStoredKey();
+        if (!stored) {
+          setAuthRequired(true);
+          return;
+        }
+        // Verify the stored key
+        await api.verifyKey(stored);
+        setAuthRequired(false);
+      } catch {
+        // If auth check fails, check if we have a stored key
+        if (getStoredKey()) {
+          setAuthRequired(false);  // might be offline, allow through
+        } else {
+          setAuthRequired(true);
+        }
+      }
+    })();
+  }, []);
+
+  const handleLogin = useCallback(() => {
+    setAuthRequired(false);
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    clearStoredKey();
+    setAuthRequired(true);
+  }, []);
+
   // Poll scraper status — 2s when running, 5s idle, 10s offline
   useEffect(() => {
+    if (authRequired !== false) return; // don't poll until authed
     let timer;
     const poll = async () => {
       try {
@@ -38,15 +130,36 @@ export default function App() {
     };
     poll();
     return () => clearTimeout(timer);
-  }, []);
+  }, [authRequired]);
 
   // Fetch DB stats on mount and when scraper finishes
   const refreshStats = () => api.getSourceStats().then(setStats).catch(() => {});
-  useEffect(() => { refreshStats(); }, []);
+  useEffect(() => {
+    if (authRequired !== false) return;
+    refreshStats();
+  }, [authRequired]);
   useEffect(() => {
     if (status && !status.is_running) refreshStats();
   }, [status?.is_running]);
 
+  // ── Loading state ──
+  if (authRequired === null) {
+    return (
+      <div className="login-overlay">
+        <div className="login-box" style={{ textAlign: 'center' }}>
+          <div className="login-brand">Canadian Legal Data</div>
+          <div className="login-subtitle" style={{ marginTop: 12 }}>Loading...</div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Login required ──
+  if (authRequired === true) {
+    return <LoginGate onLogin={handleLogin} />;
+  }
+
+  // ── Authenticated ──
   const isRunning = status?.is_running || false;
   const statusClass = !online ? 'offline' : isRunning ? 'running' : (status?.message?.startsWith('Error') ? 'error' : 'idle');
   const statusLabel = !online ? 'Offline' : isRunning ? 'Running' : 'Idle';
@@ -74,7 +187,7 @@ export default function App() {
       <nav className={`sidebar ${menuOpen ? 'open' : ''}`}>
         <div className="sidebar-brand">
           <h1>Canadian Legal Data</h1>
-          <div className="version">v5.7 Multi-Source Platform</div>
+          <div className="version">v5.8 Multi-Source Platform</div>
         </div>
 
         <div className="sidebar-nav">
@@ -105,10 +218,19 @@ export default function App() {
           )}
           {!isRunning && status?.scheduler?.enabled && status?.scheduler?.next_run_at && (
             <div className="status-detail" style={{ marginTop: 4, fontSize: 10, color: 'var(--text-muted)' }}>
-              ⏱ Next: {new Date(status.scheduler.next_run_at).toLocaleString('en-CA', {
+              Next: {new Date(status.scheduler.next_run_at).toLocaleString('en-CA', {
                 month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
               })}
             </div>
+          )}
+          {getStoredKey() && (
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ marginTop: 10, width: '100%', justifyContent: 'center', fontSize: 11 }}
+              onClick={handleLogout}
+            >
+              Lock
+            </button>
           )}
         </div>
       </nav>

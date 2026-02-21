@@ -2,6 +2,39 @@
 
 All notable changes to the Canadian Legal Data Platform are documented here.
 
+## v5.8 — 2025-02-20
+
+### Added
+- **API Key Authentication** for admin/write endpoints
+  - Bearer token auth via `ADMIN_API_KEY` environment variable
+  - Protected endpoints: all POST routes + `/api/debug/db`
+  - Public endpoints: all GET read-only routes (status, sources, documents, jobs)
+  - Dev mode: leave `ADMIN_API_KEY` empty to skip auth (backward compatible)
+  - New endpoints: `POST /api/auth/verify`, `GET /api/auth/status`
+- **Frontend login gate**: password overlay when auth is enabled, stored in `localStorage`
+- **Lock button** in sidebar to clear stored key and re-lock the dashboard
+
+### Fixed
+- **BC Laws nested act resolution**: CiviX API has two directory patterns — SIMPLE (dir -> document child) and NESTED (dir -> "Act" subdir -> `_multi` combined document). Large multi-part acts (Family Law Act, Business Corporations Act, etc.) now resolve correctly. 881/882 BC documents successfully fetched.
+- **Multi-source default**: `manager.py` now defaults to multi-source run loop when `config.sources` exist, preventing accidental fallback to legacy CanLII loop.
+- **API retry logic**: `api.js` now retries on 502-504 errors (3 attempts, 800ms delay) to handle Cloudflare tunnel flakiness.
+
+### Changed
+- Version bump to v5.8
+- `api/main.py`: FastAPI `Depends(require_admin)` on 7 admin endpoints
+- `web/src/api.js`: Auth header injection, `verifyKey()`, `setStoredKey()`, `clearStoredKey()`
+- `web/src/App.jsx`: Login gate component, auth check on mount, lock button
+- `.env.example`: Added `ADMIN_API_KEY` variable
+
+### Deployment
+```bash
+cd /opt/canlii && git pull && docker compose up -d --build
+# Set ADMIN_API_KEY in .env before deploying:
+# python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+---
+
 ## v5.7 — 2025-02-19
 
 ### Added

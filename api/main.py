@@ -1,7 +1,7 @@
 import os
 import json
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, APIRouter
+from fastapi import FastAPI, HTTPException, APIRouter, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -13,6 +13,22 @@ from api.scheduler import scheduler_service
 from utils.config import config
 
 app = FastAPI(title="Canadian Legal Data Platform API")
+
+# ---------- API Key Auth ----------
+
+ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "")
+
+
+async def require_admin(authorization: str = Header(None)):
+    """Dependency that gates admin/write endpoints behind a Bearer token.
+    If ADMIN_API_KEY is not set (empty), auth is skipped (dev mode).
+    """
+    if not ADMIN_API_KEY:
+        return  # dev mode — no key configured, allow all
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing API key")
+    if authorization[7:] != ADMIN_API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid API key")
 
 # ---------- CORS ----------
 allowed_origin = os.getenv("ALLOWED_ORIGIN", "*")
@@ -30,7 +46,7 @@ app.add_middleware(
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "Canadian Legal Data Platform", "version": "5.7"}
+    return {"status": "ok", "service": "Canadian Legal Data Platform", "version": "5.8"}
 
 
 # ========================================================================
@@ -40,13 +56,34 @@ def health_check():
 api_router = APIRouter(prefix="/api")
 
 
+# ---- Auth ----
+
+@api_router.post("/auth/verify")
+def verify_api_key(authorization: str = Header(None)):
+    """Verify an API key without performing any action.
+    Returns 200 if valid (or if auth is disabled in dev mode).
+    """
+    if not ADMIN_API_KEY:
+        return {"status": "ok", "auth_required": False}
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing API key")
+    if authorization[7:] != ADMIN_API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+    return {"status": "ok", "auth_required": True}
+
+@api_router.get("/auth/status")
+def auth_status():
+    """Check whether auth is enabled (no key required)."""
+    return {"auth_required": bool(ADMIN_API_KEY)}
+
+
 # ---- Config (legacy targets) ----
 
 @api_router.get("/config")
 def get_config():
     return {"targets": config.targets}
 
-@api_router.post("/config")
+@api_router.post("/config", dependencies=[Depends(require_admin)])
 def update_config(request: ConfigUpdateRequest):
     try:
         targets_data = [t.dict() for t in request.targets]
@@ -63,7 +100,7 @@ def get_sources():
     """Get all configured data sources."""
     return {"sources": config.sources}
 
-@api_router.post("/sources")
+@api_router.post("/sources", dependencies=[Depends(require_admin)])
 def update_sources(request: SourcesUpdateRequest):
     """Update data source configuration."""
     try:
@@ -102,7 +139,7 @@ def get_source_stats():
 def get_status():
     return scraper_manager.get_status()
 
-@api_router.post("/scraper/start")
+@api_router.post("/scraper/start", dependencies=[Depends(require_admin)])
 def start_scraper(req: ScraperStartRequest):
     success, msg = scraper_manager.start_scraping(
         engine=req.engine,
@@ -118,7 +155,7 @@ def start_scraper(req: ScraperStartRequest):
         raise HTTPException(status_code=400, detail=msg)
     return {"message": msg}
 
-@api_router.post("/scraper/stop")
+@api_router.post("/scraper/stop", dependencies=[Depends(require_admin)])
 def stop_scraper():
     success, msg = scraper_manager.stop_scraping()
     if not success:
@@ -133,7 +170,7 @@ def get_scheduler():
     """Get scheduler configuration and status."""
     return scheduler_service.get_status()
 
-@api_router.post("/scheduler")
+@api_router.post("/scheduler", dependencies=[Depends(require_admin)])
 def update_scheduler(req: SchedulerConfigRequest):
     """Update scheduler configuration."""
     from scraper.db_client import DatabaseClient
@@ -144,7 +181,7 @@ def update_scheduler(req: SchedulerConfigRequest):
     db.update_scheduler_config(updates)
     return {"status": "success", "config": db.get_scheduler_config()}
 
-@api_router.post("/scheduler/trigger")
+@api_router.post("/scheduler/trigger", dependencies=[Depends(require_admin)])
 def trigger_scheduler():
     """Manually trigger a scheduled scrape run."""
     success, msg = scheduler_service.trigger_now()
@@ -211,7 +248,7 @@ def get_document_content(doc_id: str, max_length: int = 50000):
 
 # ---- Database Diagnostics ----
 
-@api_router.get("/debug/db")
+@api_router.get("/debug/db", dependencies=[Depends(require_admin)])
 def get_db_diagnostics():
     """Run comprehensive database diagnostics for debugging."""
     from scraper.db_client import DatabaseClient

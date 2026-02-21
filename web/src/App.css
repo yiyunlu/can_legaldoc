@@ -642,3 +642,61 @@ tbody tr:hover { background: var(--bg-card-hover); }
     padding: 60px 12px 20px;
   }
 }
+
+/* ═══════════════════════════════════════
+   Login Overlay
+   ═══════════════════════════════════════ */
+.login-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+.login-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 36px 32px;
+  width: 340px;
+  max-width: 90vw;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.login-brand {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-align: center;
+}
+.login-subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+}
+.login-input {
+  width: 100%;
+  padding: 10px 14px;
+  font-size: 14px;
+  text-align: center;
+  letter-spacing: 0.08em;
+}
+.login-error {
+  background: var(--error-dim);
+  color: var(--error);
+  border: 1px solid rgba(248,113,113,.2);
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  text-align: center;
+}
+.login-btn {
+  width: 100%;
+  justify-content: center;
+  padding: 10px;
+  font-size: 14px;
+}
