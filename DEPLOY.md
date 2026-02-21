@@ -7,15 +7,17 @@ Deploy the Canadian Legal Data Platform on a Proxmox VE LXC container with Docke
 ```
 Internet → Cloudflare Tunnel → Docker (app:8000) → FastAPI + React SPA
                                                   → PostgreSQL 16 (local, Docker)
+Tailscale VPN → Direct SSH / HTTP access (internal only)
 ```
 
 - **LXC container** on Proxmox VE (Debian 12 / Ubuntu 22.04)
 - **Docker** runs the app + PostgreSQL + cloudflared sidecar
-- **PostgreSQL 16** stores all data locally (no cloud DB dependency)
+- **PostgreSQL 16** stores all data locally with GIN full-text search indexes (no cloud DB dependency)
 - **FastAPI** serves both the API (`/api/*`) and the built React frontend
-- **Cloudflare Access** handles authentication (no app-level login needed)
+- **API Key authentication** protects all endpoints (Bearer token via `ADMIN_API_KEY` env var)
+- **Tailscale VPN** for secure internal access (SSH + direct HTTP on port 8000)
+- **Cloudflare Tunnel** for public demo access (optional)
 - **Built-in scheduler** runs automated scraping (configurable daily/interval, no external cron needed)
-- **systemd timer** available as an alternative for automated scraping
 
 ---
 
@@ -94,11 +96,13 @@ Fill in your values:
 
 ```env
 POSTGRES_PASSWORD=your_secure_password
-CLOUDFLARE_TUNNEL_TOKEN=your-tunnel-token
+ADMIN_API_KEY=your_api_key_here          # Generate: python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+CLOUDFLARE_TUNNEL_TOKEN=your-tunnel-token  # Optional — only for public access
 ALLOWED_ORIGIN=https://canlii.your-domain.com
 ```
 
 > **Note:** `DATABASE_URL` is auto-constructed by `docker-compose.yml` from `POSTGRES_PASSWORD`. You only need to set `POSTGRES_PASSWORD` in `.env`.
+> **Note:** Leave `ADMIN_API_KEY` empty for dev mode (no auth required).
 
 Ensure `config.json` has your desired data sources configured.
 
@@ -134,10 +138,13 @@ Verify locally:
 ```bash
 # Health check
 curl http://localhost:8000/health
-# → {"status":"ok","service":"Canadian Legal Data Platform","version":"5.7"}
+# → {"status":"ok","service":"Canadian Legal Data Platform","version":"5.9"}
 
-# API status
+# API status (public)
 curl http://localhost:8000/api/status
+
+# Documents (requires auth)
+curl -H "Authorization: Bearer YOUR_API_KEY" http://localhost:8000/api/documents?per_page=3
 
 # Dashboard (should return HTML)
 curl -s http://localhost:8000/ | head -5
@@ -192,7 +199,40 @@ Now visiting `https://canlii.your-domain.com` will prompt for Cloudflare login b
 
 ---
 
-## 8. Set Up Automated Scraping
+## 8. Set Up Tailscale (Internal Access)
+
+Tailscale provides secure mesh VPN access for SSH and direct API access without going through Cloudflare.
+
+```bash
+# Install Tailscale on the server
+curl -fsSL https://tailscale.com/install.sh | sh
+
+# Authenticate (use your auth key or interactive login)
+sudo tailscale up --auth-key=tskey-auth-XXXX
+
+# Check the assigned IP
+tailscale ip -4
+# Example: 100.120.126.24
+```
+
+Once connected, access the platform directly:
+
+```bash
+# SSH via Tailscale
+ssh yiyun@100.120.126.24
+
+# API via Tailscale (bypasses Cloudflare tunnel)
+curl http://100.120.126.24:8000/api/status
+
+# Authenticated API calls
+curl -H "Authorization: Bearer YOUR_API_KEY" http://100.120.126.24:8000/api/documents?search=family+law
+```
+
+> **Tip:** Tailscale access is faster and more reliable than Cloudflare tunnel for development/admin use. Keep Cloudflare tunnel for public demo access.
+
+---
+
+## 9. Set Up Automated Scraping
 
 ### Option A: Built-in Scheduler (recommended, v5.3+)
 
@@ -215,17 +255,19 @@ The scheduler automatically:
 
 **Via API:**
 ```bash
-# Enable scheduler
+# Enable scheduler (requires auth)
 curl -X POST http://localhost:8000/api/scheduler \
   -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer YOUR_API_KEY' \
   -d '{"enabled": true, "schedule_type": "daily", "daily_time": "02:00", "scrape_limit": 500}'
 
-# Check scheduler status
-curl http://localhost:8000/api/scheduler
+# Check scheduler status (requires auth)
+curl -H 'Authorization: Bearer YOUR_API_KEY' http://localhost:8000/api/scheduler
 
-# Manually trigger a run
+# Manually trigger a run (requires auth)
 curl -X POST http://localhost:8000/api/scheduler/trigger \
-  -H 'Content-Type: application/json' -d '{}'
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer YOUR_API_KEY' -d '{}'
 ```
 
 ### Option B: systemd timer (legacy)
@@ -263,7 +305,7 @@ docker exec canlii-platform python main_multi.py --limit 10
 
 ---
 
-## 9. Log Rotation
+## 10. Log Rotation
 
 Create `/etc/logrotate.d/canlii`:
 
@@ -279,7 +321,7 @@ Create `/etc/logrotate.d/canlii`:
 
 ---
 
-## 10. Maintenance
+## 11. Maintenance
 
 ### Update the app
 
@@ -435,6 +477,76 @@ Once you've verified all data migrated correctly, you can optionally remove the 
 ---
 
 ### Per-version changelog (for reference)
+
+### v5.8 → v5.9 (2026-02-21)
+
+**What changed:**
+- Full-text search across 202K+ documents using PostgreSQL `tsvector`/`tsquery` with GIN indexes
+- All GET endpoints now require Bearer token auth (previously only POST/write endpoints)
+- PostgreSQL `shm_size` increased to 256MB for `ts_headline` operations
+- Frontend: search shows highlighted snippets, search input changed to "Search titles & content..."
+- New migration file: `database/migration_v5_fulltext_search.sql`
+
+**Upgrade steps:**
+```bash
+# 1. Pull and rebuild (postgres recreates due to shm_size change)
+cd /home/yiyun/canlii && git pull && docker compose up -d --build
+
+# 2. Restart tunnel (loses DNS resolution when postgres recreates)
+docker restart canlii-tunnel
+
+# 3. Run FTS migration on live database
+docker exec canlii-postgres psql -U canlii -d canlii -f /docker-entrypoint-initdb.d/01-init.sql
+# Or run migration_v5_fulltext_search.sql manually in 4 steps (see file for details)
+```
+
+**Verify:**
+```bash
+# Full-text search should return results with snippets
+curl -H "Authorization: Bearer YOUR_KEY" \
+  "http://localhost:8000/api/documents?search=family+law&per_page=3"
+
+# Unauthenticated GET should return 401
+curl http://localhost:8000/api/documents
+# → {"detail":"Missing API key"}
+```
+
+---
+
+### v5.7 → v5.8 (2026-02-20)
+
+**What changed:**
+- API Key authentication via `ADMIN_API_KEY` env var (Bearer token)
+- Frontend login gate with password overlay
+- BC Laws nested act resolution fix (881/882 BC documents)
+- API retry logic for Cloudflare tunnel flakiness
+
+**Upgrade steps:**
+```bash
+# 1. Generate API key and add to .env
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+echo "ADMIN_API_KEY=<generated_key>" >> .env
+
+# 2. Pull and rebuild
+cd /home/yiyun/canlii && git pull && docker compose up -d --build
+```
+
+**Verify:**
+```bash
+# Health check
+curl http://localhost:8000/health
+# → {"status":"ok","version":"5.8"}
+
+# Auth required on write endpoints
+curl -X POST http://localhost:8000/api/scraper/start
+# → {"detail":"Missing API key"}
+
+# Auth verify
+curl -X POST -H "Authorization: Bearer YOUR_KEY" http://localhost:8000/api/auth/verify
+# → {"status":"ok","auth_required":true}
+```
+
+---
 
 ### v5.6 → v5.7 (2025-02-19)
 
@@ -668,13 +780,14 @@ docker exec canlii-platform python main_multi.py --source-type alberta_kings_pri
 ## Verification Checklist
 
 ### API & Backend
-- [ ] `curl http://localhost:8000/health` returns `{"status":"ok","version":"5.7"}`
-- [ ] `curl http://localhost:8000/api/status` returns scraper status with `scheduler` field
-- [ ] `curl http://localhost:8000/api/scheduler` returns scheduler config
-- [ ] `curl http://localhost:8000/api/jobs?page=1&per_page=5` returns paginated jobs
-- [ ] `curl http://localhost:8000/api/documents?page=1&per_page=5` returns paginated documents with `has_content` field
+- [ ] `curl http://localhost:8000/health` returns `{"status":"ok","version":"5.9"}`
+- [ ] `curl http://localhost:8000/api/status` returns scraper status (public, no auth)
+- [ ] `curl http://localhost:8000/api/documents` returns 401 (auth required)
+- [ ] `curl -H "Authorization: Bearer KEY" http://localhost:8000/api/documents?per_page=3` returns documents
+- [ ] `curl -H "Authorization: Bearer KEY" "http://localhost:8000/api/documents?search=family+law"` returns FTS results with snippets
+- [ ] `curl -H "Authorization: Bearer KEY" http://localhost:8000/api/scheduler` returns scheduler config
+- [ ] `curl -H "Authorization: Bearer KEY" http://localhost:8000/api/jobs?page=1&per_page=5` returns paginated jobs
 - [ ] `docker exec canlii-platform python main_multi.py --list-sources` works
-- [ ] `docker exec canlii-platform python scripts/post_upgrade_check.py` passes all checks
 
 ### Web UI — Dashboard
 - [ ] `http://localhost:8000` in browser shows the React dashboard
@@ -692,7 +805,8 @@ docker exec canlii-platform python main_multi.py --source-type alberta_kings_pri
 - [ ] "Run All" button works with limit and distribution mode
 
 ### Web UI — Documents
-- [ ] Search, filter by source/jurisdiction/type, pagination all work
+- [ ] Full-text search across titles and content, filter by source/jurisdiction/type, pagination all work
+- [ ] Search results show highlighted snippets with matching terms
 - [ ] Local storage icon (green server = stored, gray = empty) appears per row
 - [ ] Click-to-expand detail shows "Local Storage: Text (X KB) + HTML (Y KB)" or "Not stored"
 - [ ] External link (↗) opens original source URL in new tab
@@ -711,7 +825,9 @@ docker exec canlii-platform python main_multi.py --source-type alberta_kings_pri
 - [ ] Database Diagnostics: "Run Diagnostic" button generates report, "Copy Report" copies to clipboard
 
 ### Infrastructure
-- [ ] Sidebar shows "v5.7 Multi-Source Platform"
+- [ ] Login gate appears when visiting the dashboard (API key required)
+- [ ] Lock button in sidebar clears stored key
 - [ ] Sidebar shows "Next: ..." when scheduler is enabled and scraper is idle
 - [ ] Mobile layout works (resize browser or test on phone)
-- [ ] `https://canlegal.ecomm101.cc` loads behind Cloudflare Access
+- [ ] `https://canlegal.ecomm101.cc` loads with login gate
+- [ ] Tailscale access works: `http://100.120.126.24:8000`

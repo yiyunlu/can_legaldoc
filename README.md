@@ -1,4 +1,4 @@
-# Canadian Legal Data Platform (v5.8)
+# Canadian Legal Data Platform (v5.9)
 
 面向加拿大少数族裔的法律咨询 Chatbot 数据基础设施。采集全国 13 省/地区 + 联邦的法律法规及历史判例，构建支持 RAG 检索增强生成的大规模法律知识库。
 
@@ -47,7 +47,7 @@ docker compose up -d --build
 
 # 4. 验证
 curl http://localhost:8000/health
-# → {"status":"ok","service":"Canadian Legal Data Platform","version":"5.8"}
+# → {"status":"ok","service":"Canadian Legal Data Platform","version":"5.9"}
 ```
 
 访问 `http://localhost:8000` 进入 Web 管理面板。
@@ -74,7 +74,7 @@ curl http://localhost:8000/health
 | :--- | :--- |
 | **Dashboard** | 总览：文档统计、来源分布、辖区分布、实时采集进度、每源最后更新时间 |
 | **Data Sources** | 数据源管理：启用/禁用、触发采集、配置分发模式 |
-| **Documents** | 文档浏览器：搜索、按来源/辖区/类型筛选、分页、本地存储状态图标、点击展开详情（含 Text/HTML 存储大小） |
+| **Documents** | 文档浏览器：全文搜索（标题+内容，高亮片段）、按来源/辖区/类型筛选、分页、本地存储状态图标、点击展开详情（含 Text/HTML 存储大小） |
 | **Run History** | 运行历史：状态筛选（完成/失败/运行中）、分页、展开查看完整日志 |
 | **Settings** | 设置：内置调度器（每日/间隔）、Supabase Keepalive、限额与分发模式、系统信息（动态版本号）、数据库诊断（一键生成报告 + 复制） |
 
@@ -154,8 +154,8 @@ curl -X POST http://localhost:8000/api/scheduler/trigger \
 
 | 表 | 内容 | 说明 |
 | :--- | :--- | :--- |
-| `documents` | 元数据 | title, citation, source_url, jurisdiction_code, source_type, document_type, metadata (JSONB) |
-| `document_versions` | 完整内容 | content_html, content_text (LZ4 压缩), SHA-256 内容哈希, 版本号 |
+| `documents` | 元数据 | title, citation, source_url, jurisdiction_code, source_type, document_type, metadata (JSONB), **search_vector** (tsvector) |
+| `document_versions` | 完整内容 | content_html, content_text (LZ4 压缩), SHA-256 内容哈希, 版本号, **content_search_vector** (tsvector) |
 | `document_chunks` | 分块 | 预留给未来的 RAG / 向量搜索 |
 
 ### 版本控制
@@ -192,7 +192,7 @@ curl -X POST http://localhost:8000/api/scheduler/trigger \
 │  └── main_multi.py (CLI)           → 命令行采集入口         │
 ├────────────────────────────────────────────────────────────┤
 │  postgres (canlii-postgres)        → PostgreSQL 16         │
-│  └── LZ4 压缩 + 版本控制 + 全文存储                         │
+│  └── LZ4 压缩 + 版本控制 + 全文存储 + GIN 全文索引           │
 ├────────────────────────────────────────────────────────────┤
 │  cloudflared (canlii-tunnel)       → Cloudflare Tunnel     │
 │  └── 安全外网访问 (可选)                                    │
@@ -292,21 +292,22 @@ curl -X POST http://localhost:8000/api/scheduler/trigger \
 | GET | `/api/auth/status` | — | 检查认证是否启用 |
 | POST | `/api/auth/verify` | Bearer | 验证 API 密钥 |
 | GET | `/api/status` | — | 采集器状态 + 调度器信息 |
-| GET | `/api/sources` | — | 已配置数据源列表 |
-| GET | `/api/sources/available` | — | 所有可用适配器 |
-| GET | `/api/sources/stats` | — | 文档统计（按来源/辖区/类型） |
+| GET | `/api/sources` | Bearer | 已配置数据源列表 |
+| GET | `/api/sources/available` | Bearer | 所有可用适配器 |
+| GET | `/api/sources/stats` | Bearer | 文档统计（按来源/辖区/类型） |
 | POST | `/api/sources` | Bearer | 更新数据源配置 |
 | POST | `/api/scraper/start` | Bearer | 启动采集 |
 | POST | `/api/scraper/stop` | Bearer | 停止采集 |
-| GET | `/api/scheduler` | — | 获取调度器配置 |
+| GET | `/api/scheduler` | Bearer | 获取调度器配置 |
 | POST | `/api/scheduler` | Bearer | 更新调度器配置 |
 | POST | `/api/scheduler/trigger` | Bearer | 手动触发一次调度采集 |
-| GET | `/api/jobs` | — | 分页查询运行历史 |
-| GET | `/api/documents` | — | 分页查询文档列表（支持搜索/筛选） |
-| GET | `/api/documents/{id}` | — | 文档详情（元数据 + 版本信息） |
+| GET | `/api/jobs` | Bearer | 分页查询运行历史 |
+| GET | `/api/documents` | Bearer | 分页查询文档列表（支持全文搜索/筛选） |
+| GET | `/api/documents/{id}` | Bearer | 文档详情（元数据 + 版本信息） |
+| GET | `/api/documents/{id}/content` | Bearer | 文档正文内容（截断预览） |
 | GET | `/api/debug/db` | Bearer | 数据库诊断报告（表大小、行数、内容统计、索引） |
 
-> **认证说明**: 标记 "Bearer" 的端点需要 `Authorization: Bearer <ADMIN_API_KEY>` 请求头。未设置 `ADMIN_API_KEY` 时为开发模式，所有端点无需认证。
+> **认证说明**: 标记 "Bearer" 的端点需要 `Authorization: Bearer <ADMIN_API_KEY>` 请求头。仅 `/health`、`/api/status`、`/api/auth/*` 为公开端点。未设置 `ADMIN_API_KEY` 时为开发模式，所有端点无需认证。
 
 ---
 
@@ -355,7 +356,8 @@ class YourSourceAdapter(BaseSourceAdapter):
 - [x] **Phase 6a**: 3 地区 PDF 适配器 — YT, NT, NU (v5.6)
 - [x] **Phase 6b**: 3 省适配器 — SK, PE, QC (v5.7) ✅ **全 10 省 + 3 地区完整覆盖**
 - [x] **Phase 6c**: API Key 认证 + BC Laws 嵌套法案修复 (v5.8)
-- [ ] **Phase 7**: RAG 向量搜索集成 (pgvector)
+- [x] **Phase 7a**: PostgreSQL 全文搜索 — tsvector/GIN 索引 + 高亮片段 + 相关性排序 (v5.9)
+- [ ] **Phase 7b**: RAG 向量搜索集成 (pgvector)
 
 ---
 
@@ -371,5 +373,5 @@ class YourSourceAdapter(BaseSourceAdapter):
 | 文件 | 说明 |
 | :--- | :--- |
 | [DEPLOY.md](./DEPLOY.md) | 部署指南（PVE + Docker + Cloudflare Tunnel） |
-| [CHANGELOG.md](./CHANGELOG.md) | 版本更新日志 (v5.0 → v5.8) |
+| [CHANGELOG.md](./CHANGELOG.md) | 版本更新日志 (v5.0 → v5.9) |
 | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | 常见问题排查 |

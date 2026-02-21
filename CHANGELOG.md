@@ -2,6 +2,48 @@
 
 All notable changes to the Canadian Legal Data Platform are documented here.
 
+## v5.9 — 2026-02-21
+
+### Added
+- **Full-text search** across 202K+ documents using PostgreSQL `tsvector`/`tsquery`
+  - Weighted search: title matches ranked 4x over content matches
+  - GIN indexes on both `documents.search_vector` and `document_versions.content_search_vector`
+  - `ts_headline` generates highlighted snippets with `<mark>` tags
+  - `ts_rank_cd` cover density ranking for relevance scoring
+  - Combined search: queries match across title, citation, and full document content
+  - Filter combination: FTS works with jurisdiction, source_type, and document_type filters
+  - Frontend: search input changed to "Search titles & content...", results show highlighted snippets
+- **Migration script** `database/migration_v5_fulltext_search.sql` for live database upgrade
+
+### Changed
+- **All GET endpoints now require auth** — previously only POST/write endpoints were protected
+  - Public endpoints (no auth): `/health`, `/api/status`, `/api/auth/status`, `/api/auth/verify`
+  - All other endpoints require `Authorization: Bearer <ADMIN_API_KEY>`
+- Docker: PostgreSQL `shm_size` increased from 64MB (default) to 256MB to support `ts_headline` on large documents
+- `db_client.py`: `search_documents()` uses CTE pattern with `plainto_tsquery` for safe user input parsing
+- Content text capped at 500K chars for tsvector indexing (prevents overflow on very large statutes)
+- `ts_headline` input capped at 10K chars for snippet generation (performance optimization)
+- Version bump to v5.9
+
+### Database Migration (for existing installs)
+```bash
+# Run the migration SQL in 4 steps:
+# 1. Add columns + triggers
+# 2. Backfill documents.search_vector
+# 3. Backfill document_versions.content_search_vector
+# 4. Create GIN indexes CONCURRENTLY
+# See database/migration_v5_fulltext_search.sql for details
+```
+
+### Deployment
+```bash
+cd /home/yiyun/canlii && git pull && docker compose up -d --build
+# IMPORTANT: postgres container will recreate due to shm_size change
+# After rebuild, restart tunnel: docker restart canlii-tunnel
+```
+
+---
+
 ## v5.8 — 2025-02-20
 
 ### Added
