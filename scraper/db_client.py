@@ -555,7 +555,7 @@ class DatabaseClient:
                             WHEN dv.content_search_vector @@ q.tsq
                             THEN ts_headline(
                                 'english',
-                                LEFT(dv.content_text, 100000),
+                                LEFT(dv.content_text, 10000),
                                 q.tsq,
                                 'MaxWords=35, MinWords=15, StartSel=<mark>, StopSel=</mark>, MaxFragments=2, FragmentDelimiter= ... '
                             )
