@@ -435,7 +435,16 @@ class DatabaseClient:
                                 jurisdiction: str = None,
                                 document_type: str = None,
                                 search: str = None) -> Dict:
-        """Get paginated documents with filtering and title search."""
+        """Get paginated documents with filtering. Dispatches to full-text search when search term present."""
+        # Full-text search path
+        if search and search.strip():
+            return self.search_documents(
+                query=search.strip(), page=page, per_page=per_page,
+                source_type=source_type, jurisdiction=jurisdiction,
+                document_type=document_type,
+            )
+
+        # Standard browse path (no search term)
         try:
             with self._get_conn() as conn:
                 cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -452,9 +461,6 @@ class DatabaseClient:
                 if document_type:
                     conditions.append("d.document_type = %s")
                     params.append(document_type)
-                if search:
-                    conditions.append("d.title ILIKE %s")
-                    params.append(f"%{search}%")
 
                 where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -490,6 +496,94 @@ class DatabaseClient:
                 }
         except Exception as e:
             logger.error(f"Get documents paginated failed: {e}")
+            return {"documents": [], "total": 0, "page": 1, "per_page": per_page, "total_pages": 0}
+
+    def search_documents(self, query: str, page: int = 1, per_page: int = 50,
+                         source_type: str = None, jurisdiction: str = None,
+                         document_type: str = None) -> Dict:
+        """Full-text search across document titles, citations, and content.
+        Uses PostgreSQL tsvector/tsquery with GIN indexes for relevance-ranked results.
+        """
+        try:
+            with self._get_conn() as conn:
+                cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+                # Build filter conditions
+                conditions = []
+                filter_params = []
+                if source_type:
+                    conditions.append("d.source_type = %s")
+                    filter_params.append(source_type)
+                if jurisdiction:
+                    conditions.append("d.jurisdiction_code = %s")
+                    filter_params.append(jurisdiction)
+                if document_type:
+                    conditions.append("d.document_type = %s")
+                    filter_params.append(document_type)
+
+                filter_clause = (" AND " + " AND ".join(conditions)) if conditions else ""
+
+                # Count matching documents
+                cur.execute(f"""
+                    WITH q AS (SELECT plainto_tsquery('english', %s) AS tsq)
+                    SELECT COUNT(DISTINCT d.id) AS cnt
+                    FROM q, documents d
+                    LEFT JOIN document_versions dv
+                        ON d.id = dv.document_id AND dv.is_latest = true
+                    WHERE (
+                        d.search_vector @@ q.tsq
+                        OR dv.content_search_vector @@ q.tsq
+                    ){filter_clause}
+                """, [query] + filter_params)
+                total = cur.fetchone()['cnt']
+
+                offset = (page - 1) * per_page
+
+                # Fetch ranked results with snippets
+                cur.execute(f"""
+                    WITH q AS (SELECT plainto_tsquery('english', %s) AS tsq)
+                    SELECT
+                        d.id, d.title, d.citation, d.source_url, d.jurisdiction_code,
+                        d.source_type, d.document_type, d.category, d.is_active,
+                        d.created_at, d.updated_at,
+                        (dv.content_text IS NOT NULL AND dv.content_text != '') AS has_content,
+                        (
+                            COALESCE(ts_rank_cd(d.search_vector, q.tsq), 0) * 4.0
+                            + COALESCE(ts_rank_cd(dv.content_search_vector, q.tsq), 0)
+                        ) AS relevance,
+                        CASE
+                            WHEN dv.content_search_vector @@ q.tsq
+                            THEN ts_headline(
+                                'english',
+                                LEFT(dv.content_text, 100000),
+                                q.tsq,
+                                'MaxWords=35, MinWords=15, StartSel=<mark>, StopSel=</mark>, MaxFragments=2, FragmentDelimiter= ... '
+                            )
+                            ELSE NULL
+                        END AS snippet
+                    FROM q, documents d
+                    LEFT JOIN document_versions dv
+                        ON d.id = dv.document_id AND dv.is_latest = true
+                    WHERE (
+                        d.search_vector @@ q.tsq
+                        OR dv.content_search_vector @@ q.tsq
+                    ){filter_clause}
+                    ORDER BY relevance DESC, d.updated_at DESC
+                    LIMIT %s OFFSET %s
+                """, [query] + filter_params + [per_page, offset])
+
+                docs = [self._serialize_row(r) for r in cur.fetchall()]
+
+                return {
+                    "documents": docs,
+                    "total": total,
+                    "page": page,
+                    "per_page": per_page,
+                    "total_pages": max(1, -(-total // per_page)),
+                    "search_mode": "fulltext",
+                }
+        except Exception as e:
+            logger.error(f"Full-text search failed: {e}")
             return {"documents": [], "total": 0, "page": 1, "per_page": per_page, "total_pages": 0}
 
     def get_document_detail(self, doc_id: str) -> Optional[Dict]:

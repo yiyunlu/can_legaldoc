@@ -139,7 +139,7 @@ export default function Documents({ stats }) {
           <input
             className="input"
             type="text"
-            placeholder="Search titles..."
+            placeholder="Search titles & content..."
             value={searchInput}
             onChange={handleSearchInput}
             style={{ minWidth: 180, padding: '5px 10px', fontSize: 12 }}
@@ -166,7 +166,9 @@ export default function Documents({ stats }) {
             ))}
           </select>
           <span className="pagination-info">
-            {data.total > 0 ? `${startIdx}–${endIdx} of ${data.total.toLocaleString()}` : '0 documents'}
+            {data.total > 0
+              ? `${startIdx}–${endIdx} of ${data.total.toLocaleString()}${data.search_mode === 'fulltext' ? ' results' : ''}`
+              : '0 documents'}
           </span>
         </div>
       </div>
@@ -206,6 +208,12 @@ export default function Documents({ stats }) {
                           <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
                             {doc.citation}
                           </div>
+                        )}
+                        {doc.snippet && (
+                          <div
+                            className="search-snippet"
+                            dangerouslySetInnerHTML={{ __html: doc.snippet }}
+                          />
                         )}
                       </td>
                       <td style={{ fontSize: 12 }}>

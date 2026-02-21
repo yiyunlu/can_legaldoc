@@ -700,3 +700,24 @@ tbody tr:hover { background: var(--bg-card-hover); }
   padding: 10px;
   font-size: 14px;
 }
+
+/* ═══════════════════════════════════════
+   Search Snippet Highlighting
+   ═══════════════════════════════════════ */
+.search-snippet {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  line-height: 1.4;
+  padding: 4px 8px;
+  background: var(--bg-input);
+  border-radius: 4px;
+  border-left: 2px solid var(--accent);
+}
+.search-snippet mark {
+  background: var(--warning-dim);
+  color: var(--warning);
+  padding: 0 2px;
+  border-radius: 2px;
+  font-weight: 600;
+}

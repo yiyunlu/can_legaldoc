@@ -128,3 +128,46 @@ INSERT INTO scheduler_config (id) VALUES (1) ON CONFLICT DO NOTHING;
 -- 9. LZ4 compression for large text columns (PostgreSQL 14+)
 ALTER TABLE document_versions ALTER COLUMN content_html SET COMPRESSION lz4;
 ALTER TABLE document_versions ALTER COLUMN content_text SET COMPRESSION lz4;
+
+-- 10. Full-text search columns
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS search_vector tsvector;
+ALTER TABLE document_versions ADD COLUMN IF NOT EXISTS content_search_vector tsvector;
+
+-- 11. Trigger: auto-maintain documents.search_vector (title=A, citation=B)
+CREATE OR REPLACE FUNCTION documents_search_vector_update() RETURNS trigger AS $$
+BEGIN
+    NEW.search_vector :=
+        setweight(to_tsvector('english', COALESCE(NEW.title, '')), 'A') ||
+        setweight(to_tsvector('english', COALESCE(NEW.citation, '')), 'B');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_documents_search_vector ON documents;
+CREATE TRIGGER trg_documents_search_vector
+    BEFORE INSERT OR UPDATE OF title, citation ON documents
+    FOR EACH ROW EXECUTE FUNCTION documents_search_vector_update();
+
+-- 12. Trigger: auto-maintain document_versions.content_search_vector (latest only)
+CREATE OR REPLACE FUNCTION doc_versions_search_vector_update() RETURNS trigger AS $$
+BEGIN
+    IF NEW.is_latest = true AND NEW.content_text IS NOT NULL AND NEW.content_text != '' THEN
+        NEW.content_search_vector := to_tsvector('english', LEFT(NEW.content_text, 500000));
+    ELSE
+        NEW.content_search_vector := NULL;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_doc_versions_search_vector ON document_versions;
+CREATE TRIGGER trg_doc_versions_search_vector
+    BEFORE INSERT OR UPDATE OF content_text, is_latest ON document_versions
+    FOR EACH ROW EXECUTE FUNCTION doc_versions_search_vector_update();
+
+-- 13. GIN indexes for full-text search
+CREATE INDEX IF NOT EXISTS idx_documents_search_vector
+    ON documents USING gin(search_vector);
+CREATE INDEX IF NOT EXISTS idx_doc_versions_content_search_vector
+    ON document_versions USING gin(content_search_vector)
+    WHERE is_latest = true;
