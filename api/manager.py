@@ -73,8 +73,10 @@ class ScraperManager:
         self.is_running = True
 
         # Decide which run loop to use
-        if source_type or source_types:
-            self.message = f"Starting multi-source ({source_type or source_types})..."
+        # Default to multi-source when config.sources exist (v5.x standard)
+        use_multi = bool(source_type or source_types or config.sources)
+        if use_multi:
+            self.message = f"Starting multi-source ({source_type or source_types or 'all'})..."
             self.thread = threading.Thread(target=self._run_multi_source)
         else:
             self.message = f"Starting ({engine}, headless={headless})..."
