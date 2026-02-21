@@ -46,7 +46,7 @@ app.add_middleware(
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "Canadian Legal Data Platform", "version": "5.8"}
+    return {"status": "ok", "service": "Canadian Legal Data Platform", "version": "5.9"}
 
 
 # ========================================================================
@@ -79,7 +79,7 @@ def auth_status():
 
 # ---- Config (legacy targets) ----
 
-@api_router.get("/config")
+@api_router.get("/config", dependencies=[Depends(require_admin)])
 def get_config():
     return {"targets": config.targets}
 
@@ -95,7 +95,7 @@ def update_config(request: ConfigUpdateRequest):
 
 # ---- Sources (multi-source config) ----
 
-@api_router.get("/sources")
+@api_router.get("/sources", dependencies=[Depends(require_admin)])
 def get_sources():
     """Get all configured data sources."""
     return {"sources": config.sources}
@@ -110,7 +110,7 @@ def update_sources(request: SourcesUpdateRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@api_router.get("/sources/available")
+@api_router.get("/sources/available", dependencies=[Depends(require_admin)])
 def list_available_adapters():
     """List all registered adapter types."""
     from scraper.adapters import list_adapters
@@ -122,7 +122,7 @@ def list_available_adapters():
         ]
     }
 
-@api_router.get("/sources/stats")
+@api_router.get("/sources/stats", dependencies=[Depends(require_admin)])
 def get_source_stats():
     """Get per-source document counts and DB statistics."""
     from scraper.db_client import DatabaseClient
@@ -165,7 +165,7 @@ def stop_scraper():
 
 # ---- Scheduler ----
 
-@api_router.get("/scheduler")
+@api_router.get("/scheduler", dependencies=[Depends(require_admin)])
 def get_scheduler():
     """Get scheduler configuration and status."""
     return scheduler_service.get_status()
@@ -192,7 +192,7 @@ def trigger_scheduler():
 
 # ---- Jobs (paginated history) ----
 
-@api_router.get("/jobs")
+@api_router.get("/jobs", dependencies=[Depends(require_admin)])
 def get_jobs(page: int = 1, per_page: int = 25, status: str = None):
     """Get paginated job history with optional status filter."""
     from scraper.db_client import DatabaseClient
@@ -204,7 +204,7 @@ def get_jobs(page: int = 1, per_page: int = 25, status: str = None):
 
 # ---- Documents (paginated browser) ----
 
-@api_router.get("/documents")
+@api_router.get("/documents", dependencies=[Depends(require_admin)])
 def list_documents(page: int = 1, per_page: int = 50,
                    source_type: str = None, jurisdiction: str = None,
                    document_type: str = None, search: str = None):
@@ -219,7 +219,7 @@ def list_documents(page: int = 1, per_page: int = 50,
         document_type=document_type, search=search
     )
 
-@api_router.get("/documents/{doc_id}")
+@api_router.get("/documents/{doc_id}", dependencies=[Depends(require_admin)])
 def get_document(doc_id: str):
     """Get document detail (metadata + version info)."""
     from scraper.db_client import DatabaseClient
@@ -230,7 +230,7 @@ def get_document(doc_id: str):
     return doc
 
 
-@api_router.get("/documents/{doc_id}/content")
+@api_router.get("/documents/{doc_id}/content", dependencies=[Depends(require_admin)])
 def get_document_content(doc_id: str, max_length: int = 50000):
     """Get document text content (truncated for preview)."""
     from scraper.db_client import DatabaseClient
@@ -261,7 +261,7 @@ def get_db_diagnostics():
 
 # ---- Discovery (legacy CanLII) ----
 
-@api_router.get("/discovery/explore")
+@api_router.get("/discovery/explore", dependencies=[Depends(require_admin)])
 def explore_targets():
     """Trigger a discovery scan with streaming progress"""
     from api.discovery import discovery_engine
@@ -272,7 +272,7 @@ def explore_targets():
 
     return StreamingResponse(event_generator(), media_type="application/x-ndjson")
 
-@api_router.get("/discovery/cache")
+@api_router.get("/discovery/cache", dependencies=[Depends(require_admin)])
 def get_discovery_cache():
     """Get cached discovery results"""
     from api.discovery import discovery_engine
