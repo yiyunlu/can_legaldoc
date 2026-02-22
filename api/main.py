@@ -71,7 +71,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "Canadian Legal Data Platform", "version": "5.11"}
+    return {"status": "ok", "service": "Canadian Legal Data Platform", "version": "5.12"}
 
 
 # ========================================================================

@@ -148,6 +148,19 @@
       "category": "Legislation",
       "enabled": true,
       "params": {}
+    },
+    {
+      "source_type": "ns_courts",
+      "name": "Nova Scotia Courts (Decisia)",
+      "jurisdiction": "ns",
+      "category": "Case Law",
+      "enabled": true,
+      "params": {
+        "base_url": "https://decisia.lexum.com/nsc",
+        "court_code": "nsc",
+        "court_name": "Nova Scotia Courts",
+        "start_year": 2003
+      }
     }
   ]
 }

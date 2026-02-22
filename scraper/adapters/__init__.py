@@ -69,6 +69,7 @@ def _ensure_adapters_loaded():
         'scraper.adapters.saskatchewan_laws',
         'scraper.adapters.pei_laws',
         'scraper.adapters.quebec_laws',
+        'scraper.adapters.decisia_case_law',
     ]
     for mod_name in adapter_modules:
         try:
