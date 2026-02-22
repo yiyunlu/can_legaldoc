@@ -15,10 +15,17 @@ The outer pages are Drupal wrappers that embed the real Decisia content via
 iframe.  Appending ?iframe=true returns the iframe content directly — clean
 server-rendered HTML suitable for requests + lxml.
 
+Anti-bot resilience:
+  - Realistic browser User-Agent (rotated)
+  - Longer delays between requests (1-2s discovery, 2-3s fetch)
+  - CAPTCHA detection with graceful abort
+  - Optional proxy support via config params
+
 License: MIT (code); upstream document licenses vary by court.
 """
 import re
 import time
+import random
 import threading
 import requests
 from datetime import datetime
@@ -55,6 +62,20 @@ COURT_NAMES = {
 # Nova Scotia Decisia sub-courts (URL path segment -> citation prefix)
 NS_SUB_COURTS = ['nssc', 'nsca', 'nspc', 'nssm', 'nsfc']
 
+# Realistic browser User-Agents (Chrome on different platforms)
+_USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+]
+
+
+class CaptchaBlockError(Exception):
+    """Raised when Decisia returns a CAPTCHA challenge instead of content."""
+    pass
+
 
 @register_adapter('ns_courts')
 class DecisiaCaseLawAdapter(BaseSourceAdapter):
@@ -62,31 +83,60 @@ class DecisiaCaseLawAdapter(BaseSourceAdapter):
     Config-driven adapter for Lexum Decisia court decision platforms.
 
     Parameters (via config.json 'params'):
-        base_url:    Decisia instance root, e.g. "https://decisia.lexum.com/nsc"
-        court_code:  Instance path segment, e.g. "nsc"
-        sub_courts:  List of sub-court codes, e.g. ["nssc", "nsca", "nspc"]
-                     If not provided, defaults to NS_SUB_COURTS.
-        court_name:  Human-readable name, e.g. "Nova Scotia Courts"
-        jurisdiction: Default jurisdiction code, e.g. "ns"
-        start_year:  Earliest year to crawl (default: 2003)
+        base_url:      Decisia instance root, e.g. "https://decisia.lexum.com/nsc"
+        court_code:    Instance path segment, e.g. "nsc"
+        sub_courts:    List of sub-court codes, e.g. ["nssc", "nsca", "nspc"]
+                       If not provided, defaults to NS_SUB_COURTS.
+        court_name:    Human-readable name, e.g. "Nova Scotia Courts"
+        jurisdiction:  Default jurisdiction code, e.g. "ns"
+        start_year:    Earliest year to crawl (default: 2003)
+        proxy_url:     Optional HTTP/SOCKS proxy URL for requests
+        delay_range:   Optional [min, max] seconds between listing requests (default: [1.0, 2.0])
+        fetch_delay:   Optional [min, max] seconds between document fetches (default: [2.0, 3.5])
     """
 
     def __init__(self, base_url="https://decisia.lexum.com/nsc",
                  court_code="nsc", sub_courts=None,
                  court_name="Nova Scotia Courts",
-                 jurisdiction="ns", start_year=2003, **kwargs):
+                 jurisdiction="ns", start_year=2003,
+                 proxy_url=None, delay_range=None, fetch_delay=None,
+                 **kwargs):
         self.base_url = base_url.rstrip('/')
         self.court_code = court_code
         self.sub_courts = sub_courts or NS_SUB_COURTS
         self.court_name = court_name
         self.jurisdiction = jurisdiction
         self.start_year = int(start_year)
+        self.proxy_url = proxy_url
+        self.delay_range = delay_range or [1.0, 2.0]
+        self.fetch_delay = fetch_delay or [2.0, 3.5]
+        self._captcha_detected = False
 
         self.session = requests.Session()
+
+        # Use realistic browser headers
+        ua = random.choice(_USER_AGENTS)
         self.session.headers.update({
-            "User-Agent": "CanadaLegalDataPlatform/1.0",
-            "Accept": "text/html,application/xhtml+xml",
+            "User-Agent": ua,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "en-CA,en-US;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0",
         })
+
+        # Configure proxy if provided
+        if self.proxy_url:
+            self.session.proxies = {
+                "http": self.proxy_url,
+                "https": self.proxy_url,
+            }
+            logger.info(f"Decisia [{court_code}]: using proxy {self.proxy_url}")
 
     def get_source_name(self) -> str:
         return f"{self.court_name} (Decisia)"
@@ -96,6 +146,56 @@ class DecisiaCaseLawAdapter(BaseSourceAdapter):
 
     def get_jurisdiction(self) -> str:
         return self.jurisdiction
+
+    # ========== Anti-bot helpers ==========
+
+    def _check_captcha(self, resp: requests.Response) -> bool:
+        """Detect if a Decisia response is a CAPTCHA challenge instead of real content."""
+        if resp.status_code == 403:
+            body = resp.text[:2000].lower()
+            if 'captcha' in body or 'jcaptcha' in body or 'challenge' in body:
+                return True
+        return False
+
+    def _delay(self, delay_range: list):
+        """Sleep a random duration within the given [min, max] range."""
+        lo, hi = delay_range[0], delay_range[1]
+        time.sleep(random.uniform(lo, hi))
+
+    def _safe_request(self, url: str, context: str = "", timeout: int = 30) -> Optional[requests.Response]:
+        """
+        Make a request with CAPTCHA detection.  Returns Response or None.
+        Raises CaptchaBlockError if server is returning CAPTCHA challenges.
+        """
+        if self._captcha_detected:
+            return None
+
+        try:
+            resp = self._request_with_retry(self.session, url, timeout=timeout)
+
+            if self._check_captcha(resp):
+                self._captcha_detected = True
+                logger.error(
+                    f"Decisia [{self.court_code}]: CAPTCHA block detected! "
+                    f"Server IP is flagged by Lexum anti-bot system. "
+                    f"URL: {url}  |  Try again later or configure proxy_url."
+                )
+                raise CaptchaBlockError(
+                    f"Decisia CAPTCHA block on {self.court_code}. "
+                    f"Configure proxy_url in config.json params to bypass."
+                )
+
+            if resp.status_code == 404:
+                return resp  # let caller handle 404 as "no data"
+
+            resp.raise_for_status()
+            return resp
+
+        except CaptchaBlockError:
+            raise
+        except Exception as e:
+            logger.warning(f"Decisia: {context} failed {url}: {e}")
+            return None
 
     # ========== URL Construction ==========
 
@@ -218,17 +318,23 @@ class DecisiaCaseLawAdapter(BaseSourceAdapter):
 
         For each sub-court (e.g. nssc, nsca, nspc), crawls from current year
         down to start_year, following pagination within each year.
-        Rate limited to 0.3s between page requests.
+
+        Rate limited with randomised delays (default 1-2s between listing pages)
+        to avoid triggering Lexum's anti-bot CAPTCHA system.
         """
         current_year = datetime.now().year
         all_docs = []
         total_pages_fetched = 0
+        self._captcha_detected = False
 
         logger.info(f"Decisia [{self.court_code}]: discovering from {len(self.sub_courts)} sub-courts, "
-                     f"years {self.start_year}-{current_year}")
+                     f"years {self.start_year}-{current_year}"
+                     f"{' via proxy' if self.proxy_url else ''}")
 
         for sub_court in self.sub_courts:
             if limit is not None and len(all_docs) >= limit:
+                break
+            if self._captcha_detected:
                 break
 
             sc_count = 0
@@ -237,22 +343,27 @@ class DecisiaCaseLawAdapter(BaseSourceAdapter):
             for year in range(current_year, self.start_year - 1, -1):
                 if limit is not None and len(all_docs) >= limit:
                     break
+                if self._captcha_detected:
+                    break
 
                 page = 1
 
                 while True:
                     if limit is not None and len(all_docs) >= limit:
                         break
+                    if self._captcha_detected:
+                        break
 
                     url = self._year_url(sub_court, year, page)
 
                     try:
-                        resp = self._request_with_retry(self.session, url, timeout=30)
-                        if resp.status_code == 404:
-                            break
-                        resp.raise_for_status()
-                    except Exception as e:
-                        logger.warning(f"Decisia: failed {url}: {e}")
+                        resp = self._safe_request(url, context=f"discover {sub_court}/{year}/p{page}")
+                    except CaptchaBlockError:
+                        break
+
+                    if resp is None:
+                        break
+                    if resp.status_code == 404:
                         break
 
                     html_text = resp.text
@@ -300,10 +411,14 @@ class DecisiaCaseLawAdapter(BaseSourceAdapter):
                         sc_count += 1
 
                     page += 1
-                    time.sleep(0.3)
+                    self._delay(self.delay_range)
 
             if sc_count > 0:
                 logger.info(f"  {sub_court.upper()}: {sc_count} decisions total")
+
+        if self._captcha_detected:
+            logger.warning(f"Decisia [{self.court_code}]: discovery aborted due to CAPTCHA block "
+                          f"(got {len(all_docs)} docs before block)")
 
         logger.info(f"Decisia [{self.court_code}]: discovered {len(all_docs):,} decisions "
                      f"across {total_pages_fetched} pages")
@@ -317,9 +432,13 @@ class DecisiaCaseLawAdapter(BaseSourceAdapter):
 
         Uses ?iframe=true to get the inner content directly.
         Extracts text from div.documentcontent (primary Decisia content class).
+        Includes CAPTCHA detection and randomised fetch delays.
         """
         url = doc_meta.source_url
         if not url:
+            return None
+
+        if self._captcha_detected:
             return None
 
         # Build iframe URL for fetching content
@@ -330,10 +449,11 @@ class DecisiaCaseLawAdapter(BaseSourceAdapter):
             iframe_url += '&iframe=true'
 
         try:
-            resp = self._request_with_retry(self.session, iframe_url, timeout=30)
-            resp.raise_for_status()
-        except Exception as e:
-            logger.warning(f"Decisia: failed to fetch {iframe_url}: {e}")
+            resp = self._safe_request(iframe_url, context=f"fetch {doc_meta.citation or url}")
+        except CaptchaBlockError:
+            return None
+
+        if resp is None:
             return None
 
         html_text = resp.text
@@ -381,7 +501,8 @@ class DecisiaCaseLawAdapter(BaseSourceAdapter):
             logger.debug(f"Decisia: no content from {url}")
             return None
 
-        time.sleep(0.5)  # rate limit
+        # Randomised delay between fetches
+        self._delay(self.fetch_delay)
 
         return DocumentContent(
             source_url=url,  # Store canonical URL (without iframe param)
@@ -404,15 +525,20 @@ class DecisiaCaseLawAdapter(BaseSourceAdapter):
     ) -> Generator[DocumentContent, None, None]:
         """
         Batch fetch decisions with progress logging.
-        Sequential with 0.5s rate limiting per document.
+        Sequential with randomised rate limiting (default 2-3.5s per document).
+        Aborts early on CAPTCHA detection.
         """
         count = 0
         failed = 0
+        self._captcha_detected = False
 
         for doc in docs:
             if limit is not None and count >= limit:
                 break
             if stop_event and stop_event.is_set():
+                break
+            if self._captcha_detected:
+                logger.warning(f"Decisia [{self.court_code}] batch: aborting — CAPTCHA detected")
                 break
 
             result = self.fetch_document(doc)
@@ -425,4 +551,5 @@ class DecisiaCaseLawAdapter(BaseSourceAdapter):
             if (count + failed) % 50 == 0 and (count + failed) > 0:
                 logger.info(f"Decisia [{self.court_code}] batch: {count} ok, {failed} fail")
 
-        logger.info(f"Decisia [{self.court_code}] batch complete: {count} ok, {failed} fail")
+        logger.info(f"Decisia [{self.court_code}] batch complete: {count} ok, {failed} fail"
+                    f"{' (CAPTCHA block)' if self._captcha_detected else ''}")
