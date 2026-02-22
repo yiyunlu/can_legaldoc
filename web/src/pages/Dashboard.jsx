@@ -15,22 +15,23 @@ const JUR_COLORS = {
 };
 
 const SOURCE_META = {
-  justice_canada_xml:    { label: 'XML',  badge: 'badge-xml', name: 'Federal Legislation', est: 5795, type: 'leg' },
-  bc_laws_api:           { label: 'API',  badge: 'badge-api', name: 'BC Laws', est: 882, type: 'leg' },
-  alberta_kings_printer: { label: 'GOV',  badge: 'badge-gov', name: 'Alberta Legislation', est: 1415, type: 'leg' },
-  a2aj_case_law:         { label: 'A2AJ', badge: 'badge-hf',  name: 'A2AJ Case Law', est: 184565, type: 'case' },
-  canlii_legacy:         { label: 'Web',  badge: 'badge-web', name: 'CanLII Legacy', est: 1000, type: 'leg' },
-  manitoba_laws:         { label: 'GOV',  badge: 'badge-gov', name: 'Manitoba Laws', est: 1926, type: 'leg' },
-  newfoundland_laws:     { label: 'GOV',  badge: 'badge-gov', name: 'NL Laws', est: 2105, type: 'leg' },
-  nova_scotia_laws:      { label: 'GOV',  badge: 'badge-gov', name: 'NS Laws', est: 790, type: 'leg' },
-  new_brunswick_laws:    { label: 'GOV',  badge: 'badge-gov', name: 'NB Laws', est: 1560, type: 'leg' },
-  ontario_elaws:         { label: 'GOV',  badge: 'badge-gov', name: 'Ontario e-Laws', est: 4400, type: 'leg' },
-  yukon_laws:            { label: 'GOV',  badge: 'badge-gov', name: 'Yukon Laws', est: 200, type: 'leg' },
-  nwt_laws:              { label: 'GOV',  badge: 'badge-gov', name: 'NWT Laws', est: 300, type: 'leg' },
-  nunavut_laws:          { label: 'GOV',  badge: 'badge-gov', name: 'Nunavut Laws', est: 250, type: 'leg' },
-  saskatchewan_laws:     { label: 'API',  badge: 'badge-api', name: 'Saskatchewan Laws', est: 1160, type: 'leg' },
-  pei_laws:              { label: 'GOV',  badge: 'badge-gov', name: 'PEI Laws', est: 850, type: 'leg' },
-  quebec_laws:           { label: 'GOV',  badge: 'badge-gov', name: 'Legis Québec', est: 4700, type: 'leg' },
+  justice_canada_xml:    { est: 5795, type: 'leg' },
+  bc_laws_api:           { est: 882, type: 'leg' },
+  alberta_kings_printer: { est: 1415, type: 'leg' },
+  a2aj_case_law:         { est: 184565, type: 'case' },
+  canlii_legacy:         { est: 1000, type: 'leg' },
+  manitoba_laws:         { est: 1926, type: 'leg' },
+  newfoundland_laws:     { est: 2105, type: 'leg' },
+  nova_scotia_laws:      { est: 790, type: 'leg' },
+  new_brunswick_laws:    { est: 1560, type: 'leg' },
+  ontario_elaws:         { est: 4400, type: 'leg' },
+  yukon_laws:            { est: 200, type: 'leg' },
+  nwt_laws:              { est: 300, type: 'leg' },
+  nunavut_laws:          { est: 250, type: 'leg' },
+  saskatchewan_laws:     { est: 1160, type: 'leg' },
+  pei_laws:              { est: 850, type: 'leg' },
+  quebec_laws:           { est: 4700, type: 'leg' },
+  ns_courts:             { est: 8000, type: 'case' },
 };
 
 const COURT_NAMES = {
@@ -49,6 +50,11 @@ const COURT_NAMES = {
   'ONCA': 'Ontario Court of Appeal',
   'ONSC': 'Ontario Superior Court',
   'YKCA': 'Yukon Court of Appeal',
+  'NSSC': 'NS Supreme Court',
+  'NSCA': 'NS Court of Appeal',
+  'NSPC': 'NS Provincial Court',
+  'NSSM': 'NS Small Claims Court',
+  'NSFC': 'NS Family Court',
 };
 
 const COURT_COLORS = {
@@ -56,6 +62,8 @@ const COURT_COLORS = {
   'BCSC': '#22c55e', 'BCCA': '#10b981', 'ONCA': '#06b6d4', 'ONSC': '#0ea5e9',
   'SST': '#8b5cf6', 'IRB-RAD': '#a855f7', 'IRB-RPD': '#c084fc',
   'CHRT': '#ec4899', 'CMAC': '#f43f5e', 'YKCA': '#14b8a6',
+  'NSSC': '#fb923c', 'NSCA': '#f97316', 'NSPC': '#fdba74',
+  'NSSM': '#fed7aa', 'NSFC': '#ffedd5',
 };
 
 export default function Dashboard({ status, stats }) {
@@ -66,28 +74,35 @@ export default function Dashboard({ status, stats }) {
   const byType = stats.by_type || {};
   const byCourt = stats.by_court || {};
   const total = stats.total_documents || 0;
-  const maxJur = Math.max(...Object.values(byJur).map(j => j.count), 1);
   const isRunning = status?.is_running || false;
 
   const caseLawTotal = byType.case_law || 0;
-  const legislationTotal = (byType.legislation || 0) + (byType.regulation || 0);
-  const maxCourt = Math.max(...Object.values(byCourt), 1);
+  const legislationTotal = byType.legislation || 0;
+  const regulationTotal = byType.regulation || 0;
 
-  // Coverage calculations
-  const estLegislation = Object.entries(SOURCE_META)
+  const numSources = Object.keys(bySource).length;
+  const numJurisdictions = Object.keys(byJur).length;
+  const numCourts = Object.keys(byCourt).length;
+
+  // Coverage calculation
+  const estLeg = Object.entries(SOURCE_META)
     .filter(([k, m]) => m.type === 'leg' && k !== 'canlii_legacy')
     .reduce((s, [, m]) => s + (m.est || 0), 0);
-  const legCoveragePct = estLegislation > 0 ? ((legislationTotal / estLegislation) * 100) : 0;
-  const legCoverageDisplay = legCoveragePct >= 1 ? `${Math.round(legCoveragePct)}%` : legCoveragePct > 0 ? '< 1%' : '0%';
+  const legCovPct = estLeg > 0 ? Math.round(((legislationTotal + regulationTotal) / estLeg) * 100) : 0;
 
-  const caseCoveragePct = 184565 > 0 ? ((caseLawTotal / 184565) * 100) : 0;
-  const caseCoverageDisplay = caseCoveragePct >= 1 ? `${Math.round(caseCoveragePct)}%` : caseCoveragePct > 0 ? '< 1%' : '0%';
+  const maxJur = Math.max(...Object.values(byJur).map(j => j.count), 1);
+  const maxCourt = Math.max(...Object.values(byCourt), 1);
+
+  // Top 10 courts
+  const topCourts = Object.entries(byCourt)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 12);
 
   return (
     <div>
       <div className="page-header">
-        <h2>Dashboard</h2>
-        <p>Canadian legislation, regulations, and court decisions</p>
+        <h2>Platform Overview</h2>
+        <p>Canada's comprehensive legal document aggregation platform</p>
       </div>
 
       {isRunning && (
@@ -100,103 +115,134 @@ export default function Dashboard({ status, stats }) {
         </div>
       )}
 
-      {/* Top Stats */}
-      <div className="stat-grid">
-        <div className="stat-card">
-          <div className="stat-value" style={{ color: 'var(--accent)' }}>{total.toLocaleString()}</div>
-          <div className="stat-label">Total Documents</div>
+      {/* ── Hero Metrics ── */}
+      <div className="hero-stats">
+        <div className="hero-stat">
+          <div className="hero-value" style={{ color: 'var(--accent)' }}>{total.toLocaleString()}</div>
+          <div className="hero-label">Total Documents</div>
         </div>
-        <div className="stat-card">
-          <div className="stat-value" style={{ color: 'var(--info)' }}>{(byType.legislation || 0).toLocaleString()}</div>
-          <div className="stat-label">Legislation</div>
+        <div className="hero-stat">
+          <div className="hero-value" style={{ color: 'var(--success)' }}>{numSources}</div>
+          <div className="hero-label">Data Pipelines</div>
         </div>
-        <div className="stat-card">
-          <div className="stat-value" style={{ color: 'var(--orange)' }}>{(byType.regulation || 0).toLocaleString()}</div>
-          <div className="stat-label">Regulations</div>
+        <div className="hero-stat">
+          <div className="hero-value" style={{ color: 'var(--info)' }}>{numJurisdictions}</div>
+          <div className="hero-label">Jurisdictions</div>
         </div>
-        <div className="stat-card">
-          <div className="stat-value" style={{ color: '#a855f7' }}>{caseLawTotal.toLocaleString()}</div>
-          <div className="stat-label">Case Law</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value" style={{ color: legCoveragePct >= 50 ? 'var(--success)' : 'var(--orange)' }}>
-            {legCoverageDisplay}
+        <div className="hero-stat">
+          <div className="hero-value" style={{ color: legCovPct >= 90 ? 'var(--success)' : 'var(--orange)' }}>
+            {legCovPct}%
           </div>
-          <div className="stat-label">Legislation Coverage</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value" style={{ color: caseCoveragePct >= 50 ? 'var(--success)' : '#a855f7' }}>
-            {caseCoverageDisplay}
-          </div>
-          <div className="stat-label">Case Law Coverage</div>
+          <div className="hero-label">Legislation Coverage</div>
         </div>
       </div>
 
-      {/* Two-section layout: Legislation | Case Law */}
-      <div className="dashboard-two-col">
-
-        {/* LEFT: Legislation Sources */}
-        <div className="card">
-          <div className="card-title" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 14 }}>Legislation Sources</span>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>
-              {legislationTotal.toLocaleString()} docs
-            </span>
+      {/* ── Data Pipeline Overview ── */}
+      <div className="pipeline-grid">
+        <div className="pipeline-card">
+          <div className="pipeline-header">
+            <span className="pipeline-dot" style={{ background: 'var(--info)' }} />
+            <span className="pipeline-title">Legislation</span>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {Object.entries(bySource)
-              .filter(([key]) => (SOURCE_META[key] || {}).type !== 'case')
-              .sort((a, b) => b[1] - a[1])
-              .map(([key, count]) => {
-                const meta = SOURCE_META[key] || { label: '?', badge: '', name: key };
-                const pct = legislationTotal > 0 ? (count / legislationTotal * 100) : 0;
-                return (
-                  <div key={key}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span className={`badge ${meta.badge}`}>{meta.label}</span>
-                        <span style={{ fontSize: 13, fontWeight: 500 }}>{meta.name}</span>
-                      </div>
-                      <span style={{ fontSize: 14, fontWeight: 700 }}>{count.toLocaleString()}</span>
-                    </div>
-                    <div className="source-progress">
-                      <div className="source-progress-bar" style={{ width: `${Math.min(100, pct)}%` }} />
-                    </div>
-                  </div>
-                );
-              })}
+          <div className="pipeline-value">{legislationTotal.toLocaleString()}</div>
+          <div className="pipeline-sub">
+            {Object.entries(SOURCE_META).filter(([k, m]) => m.type === 'leg' && k !== 'canlii_legacy').length} sources &middot; All provinces & territories
+          </div>
+          <div className="pipeline-bar-track">
+            <div className="pipeline-bar-fill" style={{
+              width: `${Math.min(100, estLeg > 0 ? (legislationTotal / estLeg) * 100 : 0)}%`,
+              background: 'var(--info)',
+            }} />
           </div>
         </div>
 
-        {/* RIGHT: Case Law by Court */}
+        <div className="pipeline-card">
+          <div className="pipeline-header">
+            <span className="pipeline-dot" style={{ background: 'var(--orange)' }} />
+            <span className="pipeline-title">Regulations</span>
+          </div>
+          <div className="pipeline-value">{regulationTotal.toLocaleString()}</div>
+          <div className="pipeline-sub">Federal regulations via Justice Canada XML</div>
+          <div className="pipeline-bar-track">
+            <div className="pipeline-bar-fill" style={{
+              width: regulationTotal > 0 ? '100%' : '0%',
+              background: 'var(--orange)',
+            }} />
+          </div>
+        </div>
+
+        <div className="pipeline-card">
+          <div className="pipeline-header">
+            <span className="pipeline-dot" style={{ background: 'var(--purple)' }} />
+            <span className="pipeline-title">Case Law</span>
+          </div>
+          <div className="pipeline-value">{caseLawTotal.toLocaleString()}</div>
+          <div className="pipeline-sub">
+            {numCourts} courts &middot; Federal, BC, ON, NS + tribunals
+          </div>
+          <div className="pipeline-bar-track">
+            <div className="pipeline-bar-fill" style={{
+              width: '100%',
+              background: 'var(--purple)',
+            }} />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Two-Column: Jurisdictions + Courts ── */}
+      <div className="dashboard-two-col">
         <div className="card">
-          <div className="card-title" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 14 }}>Case Law by Court</span>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>
+          <div className="card-title" style={{ marginBottom: 14 }}>Jurisdiction Coverage</div>
+          <div className="jur-bar-wrap">
+            {Object.entries(byJur)
+              .sort((a, b) => b[1].count - a[1].count)
+              .map(([code, data]) => (
+                <div className="jur-bar-row" key={code}>
+                  <div className="jur-bar-label">{JUR_NAMES[code] || data.name || code}</div>
+                  <div className="jur-bar-track">
+                    <div
+                      className="jur-bar-fill"
+                      style={{
+                        width: `${(data.count / maxJur) * 100}%`,
+                        background: JUR_COLORS[code] || 'var(--accent)',
+                      }}
+                    />
+                  </div>
+                  <div className="jur-bar-count">{data.count.toLocaleString()}</div>
+                </div>
+              ))}
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-title" style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>Court Distribution</span>
+            <span style={{
+              fontSize: 11, color: 'var(--text-muted)', fontWeight: 400,
+              textTransform: 'none', letterSpacing: 0,
+            }}>
               {caseLawTotal.toLocaleString()} decisions
             </span>
           </div>
-          {Object.keys(byCourt).length > 0 ? (
+          {topCourts.length > 0 ? (
             <div className="jur-bar-wrap">
-              {Object.entries(byCourt)
-                .sort((a, b) => b[1] - a[1])
-                .map(([court, count]) => (
-                  <div className="jur-bar-row" key={court}>
-                    <div className="jur-bar-label court-label">
-                      {COURT_NAMES[court] || court}
-                    </div>
-                    <div className="jur-bar-track">
-                      <div
-                        className="jur-bar-fill"
-                        style={{
-                          width: `${(count / maxCourt) * 100}%`,
-                          background: COURT_COLORS[court] || '#a855f7',
-                        }}
-                      />
-                    </div>
-                    <div className="jur-bar-count">{count.toLocaleString()}</div>
+              {topCourts.map(([court, count]) => (
+                <div className="jur-bar-row" key={court}>
+                  <div className="jur-bar-label court-label">
+                    {COURT_NAMES[court] || court}
                   </div>
-                ))}
+                  <div className="jur-bar-track">
+                    <div
+                      className="jur-bar-fill"
+                      style={{
+                        width: `${(count / maxCourt) * 100}%`,
+                        background: COURT_COLORS[court] || '#a855f7',
+                      }}
+                    />
+                  </div>
+                  <div className="jur-bar-count">{count.toLocaleString()}</div>
+                </div>
+              ))}
             </div>
           ) : (
             <div style={{ color: 'var(--text-muted)', fontSize: 13, padding: '20px 0', textAlign: 'center' }}>
@@ -206,49 +252,25 @@ export default function Dashboard({ status, stats }) {
         </div>
       </div>
 
-      {/* Jurisdiction breakdown */}
-      <div className="card" style={{ marginTop: 16 }}>
-        <div className="card-title" style={{ marginBottom: 16 }}>All Documents by Jurisdiction</div>
-        <div className="jur-bar-wrap">
-          {Object.entries(byJur)
-            .sort((a, b) => b[1].count - a[1].count)
-            .map(([code, data]) => (
-              <div className="jur-bar-row" key={code}>
-                <div className="jur-bar-label">{JUR_NAMES[code] || data.name || code}</div>
-                <div className="jur-bar-track">
-                  <div
-                    className="jur-bar-fill"
-                    style={{
-                      width: `${(data.count / maxJur) * 100}%`,
-                      background: JUR_COLORS[code] || 'var(--accent)',
-                    }}
-                  />
-                </div>
-                <div className="jur-bar-count">{data.count.toLocaleString()}</div>
-              </div>
-            ))}
-        </div>
-      </div>
-
-      {/* Live progress panel */}
+      {/* ── Live Progress ── */}
       {isRunning && status && (
         <div className="card" style={{ marginTop: 16 }}>
           <div className="card-title" style={{ marginBottom: 16 }}>Live Progress</div>
-          <div className="stat-grid">
+          <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
             <div className="stat-card">
-              <div className="stat-value" style={{ color: 'var(--success)' }}>{status.stats.success}</div>
+              <div className="stat-value" style={{ color: 'var(--success)', fontSize: 22 }}>{status.stats.success}</div>
               <div className="stat-label">Success</div>
             </div>
             <div className="stat-card">
-              <div className="stat-value" style={{ color: 'var(--error)' }}>{status.stats.failed}</div>
+              <div className="stat-value" style={{ color: 'var(--error)', fontSize: 22 }}>{status.stats.failed}</div>
               <div className="stat-label">Failed</div>
             </div>
             <div className="stat-card">
-              <div className="stat-value" style={{ color: 'var(--text-muted)' }}>{status.stats.skipped}</div>
+              <div className="stat-value" style={{ color: 'var(--text-muted)', fontSize: 22 }}>{status.stats.skipped}</div>
               <div className="stat-label">Skipped</div>
             </div>
             <div className="stat-card">
-              <div className="stat-value">
+              <div className="stat-value" style={{ fontSize: 22 }}>
                 {status.scrape_limit ? Math.max(0, status.scrape_limit - status.stats.success - status.stats.failed) : '--'}
               </div>
               <div className="stat-label">Remaining</div>

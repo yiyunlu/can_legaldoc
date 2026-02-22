@@ -365,6 +365,127 @@ tbody tr:hover { background: var(--bg-card-hover); }
 .jur-bar-fill  { height: 100%; border-radius: 5px; transition: width 0.5s ease; min-width: 2px; }
 .jur-bar-count { width: 60px; font-size: 12px; color: var(--text-secondary); font-weight: 600; }
 
+/* ── Hero Stats ──────────────────────── */
+.hero-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.hero-stat {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px 24px;
+  transition: border-color var(--transition);
+}
+.hero-stat:hover { border-color: var(--border-focus); }
+.hero-value { font-size: 32px; font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; }
+.hero-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-top: 4px;
+}
+
+/* ── Pipeline Overview ───────────────── */
+.pipeline-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.pipeline-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  transition: border-color var(--transition);
+}
+.pipeline-card:hover { border-color: var(--border-focus); }
+.pipeline-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.pipeline-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.pipeline-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.pipeline-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+.pipeline-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  margin-bottom: 10px;
+}
+.pipeline-bar-track {
+  height: 4px;
+  background: var(--bg-input);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.pipeline-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.5s ease;
+  min-width: 2px;
+}
+
+/* ── Source Category Sections ────────── */
+.source-category {
+  margin-bottom: 28px;
+}
+.source-category-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.source-category-icon {
+  font-size: 18px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.source-category-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.source-category-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+.source-category-dot {
+  margin: 0 6px;
+}
+
 /* ── Dashboard Two-Col Layout ────────── */
 .dashboard-two-col {
   display: grid;
@@ -534,9 +655,23 @@ tbody tr:hover { background: var(--bg-card-hover); }
 
   .page-header h2 { font-size: 18px; }
 
+  /* Hero stats: 2 cols on mobile */
+  .hero-stats {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .hero-stat { padding: 14px 16px; }
+  .hero-value { font-size: 24px; }
+
+  /* Pipeline grid: single column */
+  .pipeline-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
   /* Stat grid: 2 cols on mobile */
   .stat-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, 1fr) !important;
     gap: 8px;
   }
   .stat-value { font-size: 22px; }

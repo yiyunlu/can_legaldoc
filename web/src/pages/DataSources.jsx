@@ -25,7 +25,32 @@ const SOURCE_META = {
   saskatchewan_laws:     { label: 'API', badge: 'badge-api', total: '~1,160',   est: 1160 },
   pei_laws:              { label: 'GOV', badge: 'badge-gov', total: '~850',     est: 850 },
   quebec_laws:           { label: 'GOV', badge: 'badge-gov', total: '~4,700',   est: 4700 },
+  ns_courts:             { label: 'GOV', badge: 'badge-gov', total: '~8,000',   est: 8000 },
 };
+
+const CATEGORIES = [
+  {
+    id: 'federal_leg',
+    title: 'Federal Legislation & Regulations',
+    icon: '\u00A7',
+    color: 'var(--info)',
+    filter: s => s.category === 'Legislation' && (s.jurisdiction === 'ca'),
+  },
+  {
+    id: 'provincial_leg',
+    title: 'Provincial & Territorial Legislation',
+    icon: '\u2302',
+    color: 'var(--success)',
+    filter: s => s.category === 'Legislation' && s.jurisdiction !== 'ca' && s.jurisdiction !== 'multi',
+  },
+  {
+    id: 'case_law',
+    title: 'Case Law',
+    icon: '\u2696',
+    color: 'var(--purple)',
+    filter: s => s.category === 'Case Law',
+  },
+];
 
 export default function DataSources({ status, stats, onRefreshStats }) {
   const [sources, setSources] = useState([]);
@@ -69,7 +94,6 @@ export default function DataSources({ status, stats, onRefreshStats }) {
     setMessage(null);
     try {
       const enabledTypes = sources.filter(s => s.enabled).map(s => s.source_type);
-      // Build source estimates from SOURCE_META
       const estimates = {};
       enabledTypes.forEach(st => {
         const meta = SOURCE_META[st];
@@ -94,6 +118,118 @@ export default function DataSources({ status, stats, onRefreshStats }) {
   if (loading) return <div style={{ padding: 20, color: 'var(--text-muted)' }}>Loading...</div>;
 
   const enabledCount = sources.filter(s => s.enabled).length;
+
+  // Build categorized source groups
+  const categorized = CATEGORIES.map(cat => {
+    const catSources = sources
+      .map((src, idx) => ({ ...src, _idx: idx }))
+      .filter(cat.filter);
+    const catTotal = catSources.reduce((sum, s) => sum + (bySource[s.source_type] || 0), 0);
+    return { ...cat, sources: catSources, total: catTotal };
+  });
+
+  // Uncategorized sources (safety net)
+  const categorizedTypes = new Set(categorized.flatMap(c => c.sources.map(s => s.source_type)));
+  const uncategorized = sources
+    .map((src, idx) => ({ ...src, _idx: idx }))
+    .filter(s => !categorizedTypes.has(s.source_type));
+
+  // Unconfigured adapters
+  const unconfigured = adapters.filter(a => !sources.some(s => s.source_type === a.source_type));
+
+  const renderSourceCard = (src) => {
+    const meta = SOURCE_META[src.source_type] || { label: '?', badge: '', total: '?' };
+    const docCount = bySource[src.source_type] || 0;
+    const isActive = isRunning && status?.current_source === src.name;
+
+    return (
+      <div
+        key={src.source_type}
+        className={`source-card ${!src.enabled ? 'disabled' : ''} ${isActive ? 'active-source' : ''}`}
+      >
+        <div className="source-card-header">
+          <div>
+            <div className="source-name">{src.name}</div>
+            <div className="source-meta">
+              <span>{JUR_NAMES[src.jurisdiction] || src.jurisdiction}</span>
+              <span>{src.category}</span>
+            </div>
+          </div>
+          <span className={`badge ${meta.badge}`}>{meta.label}</span>
+        </div>
+
+        <div className="source-stats">
+          <div className="source-stat">
+            <div className="source-stat-value" style={{ color: 'var(--accent)' }}>
+              {docCount.toLocaleString()}
+            </div>
+            <div className="source-stat-label">In DB</div>
+          </div>
+          <div className="source-stat">
+            <div className="source-stat-value" style={{ color: 'var(--text-secondary)' }}>
+              {meta.total}
+            </div>
+            <div className="source-stat-label">Available</div>
+          </div>
+          <div className="source-stat">
+            <div className="source-stat-value" style={{ color: src.enabled ? 'var(--success)' : 'var(--text-muted)' }}>
+              {src.enabled ? 'ON' : 'OFF'}
+            </div>
+            <div className="source-stat-label">Status</div>
+          </div>
+        </div>
+
+        {isActive ? (
+          <div className="source-progress" style={{ marginBottom: 14 }}>
+            <div
+              className="source-progress-bar"
+              style={{
+                width: status.scrape_limit
+                  ? `${Math.min(100, ((status.stats.success + status.stats.failed) / status.scrape_limit) * 100)}%`
+                  : '50%',
+                background: 'var(--success)',
+              }}
+            />
+          </div>
+        ) : meta.est > 0 && (
+          <div style={{ marginBottom: 10 }}>
+            <div className="source-progress" style={{ height: 4 }}>
+              <div
+                className="source-progress-bar"
+                style={{
+                  width: `${Math.min(100, (docCount / meta.est) * 100)}%`,
+                  background: docCount >= meta.est * 0.9 ? 'var(--success)' : 'var(--accent)',
+                  transition: 'width 0.5s ease',
+                }}
+              />
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3, textAlign: 'right' }}>
+              {docCount > 0 ? `${Math.round((docCount / meta.est) * 100)}%` : '\u2014'}
+            </div>
+          </div>
+        )}
+
+        <div className="source-actions">
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={src.enabled}
+              onChange={() => toggleSource(src._idx)}
+            />
+            <span className="toggle-track" />
+            <span className="toggle-thumb" />
+          </label>
+          <button
+            className="btn btn-sm btn-ghost"
+            onClick={() => handleRun(src.source_type)}
+            disabled={isRunning || !src.enabled}
+          >
+            {isActive ? 'Running...' : 'Run'}
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div>
@@ -144,127 +280,67 @@ export default function DataSources({ status, stats, onRefreshStats }) {
         </div>
       )}
 
-      {/* Source Cards */}
-      <div className="source-grid">
-        {sources.map((src, idx) => {
-          const meta = SOURCE_META[src.source_type] || { label: '?', badge: '', total: '?' };
-          const docCount = bySource[src.source_type] || 0;
-          const isActive = isRunning && status?.current_source === src.name;
-
-          return (
-            <div
-              key={src.source_type}
-              className={`source-card ${!src.enabled ? 'disabled' : ''} ${isActive ? 'active-source' : ''}`}
-            >
-              {/* Header */}
-              <div className="source-card-header">
-                <div>
-                  <div className="source-name">{src.name}</div>
-                  <div className="source-meta">
-                    <span>{JUR_NAMES[src.jurisdiction] || src.jurisdiction}</span>
-                    <span>{src.category}</span>
-                  </div>
-                </div>
-                <span className={`badge ${meta.badge}`}>{meta.label}</span>
-              </div>
-
-              {/* Stats */}
-              <div className="source-stats">
-                <div className="source-stat">
-                  <div className="source-stat-value" style={{ color: 'var(--accent)' }}>
-                    {docCount.toLocaleString()}
-                  </div>
-                  <div className="source-stat-label">In DB</div>
-                </div>
-                <div className="source-stat">
-                  <div className="source-stat-value" style={{ color: 'var(--text-secondary)' }}>
-                    {meta.total}
-                  </div>
-                  <div className="source-stat-label">Available</div>
-                </div>
-                <div className="source-stat">
-                  <div className="source-stat-value" style={{ color: 'var(--success)' }}>
-                    {src.enabled ? 'ON' : 'OFF'}
-                  </div>
-                  <div className="source-stat-label">Status</div>
-                </div>
-              </div>
-
-              {/* Progress bar: active run or persistent coverage */}
-              {isActive ? (
-                <div className="source-progress" style={{ marginBottom: 14 }}>
-                  <div
-                    className="source-progress-bar"
-                    style={{
-                      width: status.scrape_limit
-                        ? `${Math.min(100, ((status.stats.success + status.stats.failed) / status.scrape_limit) * 100)}%`
-                        : '50%',
-                      background: 'var(--success)',
-                    }}
-                  />
-                </div>
-              ) : meta.est > 0 && (
-                <div style={{ marginBottom: 10 }}>
-                  <div className="source-progress" style={{ height: 4 }}>
-                    <div
-                      className="source-progress-bar"
-                      style={{
-                        width: `${Math.min(100, (docCount / meta.est) * 100)}%`,
-                        background: docCount >= meta.est * 0.9 ? 'var(--success)' : 'var(--accent)',
-                        transition: 'width 0.5s ease',
-                      }}
-                    />
-                  </div>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3, textAlign: 'right' }}>
-                    {docCount > 0 ? `${Math.round((docCount / meta.est) * 100)}%` : '—'}
-                  </div>
-                </div>
-              )}
-
-              {/* Actions */}
-              <div className="source-actions">
-                <label className="toggle">
-                  <input
-                    type="checkbox"
-                    checked={src.enabled}
-                    onChange={() => toggleSource(idx)}
-                  />
-                  <span className="toggle-track" />
-                  <span className="toggle-thumb" />
-                </label>
-                <button
-                  className="btn btn-sm btn-ghost"
-                  onClick={() => handleRun(src.source_type)}
-                  disabled={isRunning || !src.enabled}
-                >
-                  {isActive ? 'Running...' : 'Run'}
-                </button>
+      {/* Categorized Source Sections */}
+      {categorized.map(cat => (
+        cat.sources.length > 0 && (
+          <div key={cat.id} className="source-category">
+            <div className="source-category-header">
+              <div className="source-category-icon" style={{ color: cat.color }}>{cat.icon}</div>
+              <div className="source-category-title">{cat.title}</div>
+              <div className="source-category-count">
+                {cat.sources.length} source{cat.sources.length !== 1 ? 's' : ''}
+                <span className="source-category-dot">&middot;</span>
+                {cat.total.toLocaleString()} docs
               </div>
             </div>
-          );
-        })}
+            <div className="source-grid">
+              {cat.sources.map(renderSourceCard)}
+            </div>
+          </div>
+        )
+      ))}
 
-        {/* Unconfigured adapters */}
-        {adapters
-          .filter(a => !sources.some(s => s.source_type === a.source_type))
-          .map(a => {
-            const meta = SOURCE_META[a.source_type] || { label: '?', badge: '', total: '?' };
-            return (
-              <div key={a.source_type} className="source-card disabled" style={{ opacity: 0.35 }}>
-                <div className="source-card-header">
-                  <div>
-                    <div className="source-name">{a.source_type}</div>
-                    <div className="source-meta"><span>{a.class}</span></div>
+      {/* Uncategorized (fallback) */}
+      {uncategorized.length > 0 && (
+        <div className="source-category">
+          <div className="source-category-header">
+            <div className="source-category-title">Other Sources</div>
+            <div className="source-category-count">{uncategorized.length} source{uncategorized.length !== 1 ? 's' : ''}</div>
+          </div>
+          <div className="source-grid">
+            {uncategorized.map(renderSourceCard)}
+          </div>
+        </div>
+      )}
+
+      {/* Unconfigured adapters */}
+      {unconfigured.length > 0 && (
+        <div className="source-category" style={{ opacity: 0.5 }}>
+          <div className="source-category-header">
+            <div className="source-category-title">Unconfigured Adapters</div>
+            <div className="source-category-count">{unconfigured.length} available</div>
+          </div>
+          <div className="source-grid">
+            {unconfigured.map(a => {
+              const meta = SOURCE_META[a.source_type] || { label: '?', badge: '', total: '?' };
+              return (
+                <div key={a.source_type} className="source-card disabled">
+                  <div className="source-card-header">
+                    <div>
+                      <div className="source-name">{a.source_type}</div>
+                      <div className="source-meta"><span>{a.class}</span></div>
+                    </div>
+                    <span className={`badge ${meta.badge}`}>{meta.label}</span>
                   </div>
-                  <span className={`badge ${meta.badge}`}>{meta.label}</span>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '12px 0' }}>
+                    Not configured. Add to <code style={{ color: 'var(--accent)' }}>config.json</code> to enable.
+                  </div>
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '12px 0' }}>
-                  Not configured. Add to <code style={{ color: 'var(--accent)' }}>config.json</code> to enable.
-                </div>
-              </div>
-            );
-          })}
-      </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

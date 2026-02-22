@@ -18,6 +18,7 @@ const SOURCE_META = {
   saskatchewan_laws:     { label: 'API',  badge: 'badge-api', name: 'Saskatchewan Laws' },
   pei_laws:              { label: 'GOV',  badge: 'badge-gov', name: 'PEI Laws' },
   quebec_laws:           { label: 'GOV',  badge: 'badge-gov', name: 'Legis Québec' },
+  ns_courts:             { label: 'GOV',  badge: 'badge-gov', name: 'NS Courts (Decisia)' },
 };
 
 const JUR_NAMES = {
